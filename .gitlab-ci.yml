@@ -1,0 +1,11 @@
+include:
+  - project: viz/ci/gitlabpipelines
+    file: index.yml
+
+docker-build-image:
+  extends: .build-image-using-kaniko
+
+docker-publish-image:
+  extends: .publish-image-using-kaniko
+  variables:
+    CI_REGISTRY_IMAGE: $CI_REGISTRY/viz/brayns/sbo-ppproxy

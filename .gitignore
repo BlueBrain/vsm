@@ -1,0 +1,17 @@
+.idea/
+.vscode/
+venv/
+.env
+*.egg-info
+__pycache__/
+*.py[cod]
+*$py.class
+data
+certs
+env
+/*.yml
+/*.yaml
+*.crt
+*.key
+htmlcov
+report.*
