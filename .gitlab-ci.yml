@@ -8,4 +8,9 @@ docker-build-image:
 docker-publish-image:
   extends: .publish-image-using-kaniko
   variables:
-    CI_REGISTRY_IMAGE: $CI_REGISTRY/viz/brayns/sbo-ppproxy
+    CI_REGISTRY_IMAGE: $CI_REGISTRY/viz/brayns/vsm
+
+docker-publish-image-to-dockerhub:
+  extends: .publish-image-using-kaniko
+  variables:
+    CI_REGISTRY_IMAGE: bluebrain/vsm
