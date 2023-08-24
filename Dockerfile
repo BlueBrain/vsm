@@ -4,7 +4,7 @@ WORKDIR /app
 COPY requirements.txt /app
 
 RUN pip install --no-cache-dir -r requirements.txt
-RUN apt update && apt install telnet httpie vim netcat -y
+RUN apt update && apt install telnet httpie vim netcat-traditional -y
 
 ADD . /app
 
