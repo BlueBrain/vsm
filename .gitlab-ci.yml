@@ -13,4 +13,7 @@ docker-publish-image:
 docker-publish-image-to-dockerhub:
   extends: .publish-image-using-kaniko
   variables:
+    CI_REGISTRY_USER: bbpbuildbot
     CI_REGISTRY_IMAGE: bluebrain/vsm
+    CI_REGISTRY: https://index.docker.io/v1/
+    CI_REGISTRY_PASSWORD: $CI_REGISTRY_PASSWORD_DOCKERHUB
