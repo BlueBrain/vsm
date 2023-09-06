@@ -78,7 +78,6 @@ class UnicoreScheduler:
 
         try:
             resp = await unicore_handler.get_job_details(job_id, token)
-            end_time = resp["EndTime"]
             job_running = resp["JobState"] == "RUNNING"
             if not job_running:
                 return web.Response(
@@ -87,10 +86,11 @@ class UnicoreScheduler:
                         {"job_running": False, "end_time": None, "brayns_started": False}
                     ),
                 )
-
         except Exception as e:
             logging.error(e)
             return web.Response(status=500)
+        
+        end_time = resp["EndTime"]
 
         try:
             file_content = await _get_stdout(job_id, token)
