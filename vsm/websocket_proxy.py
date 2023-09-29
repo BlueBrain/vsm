@@ -6,7 +6,7 @@ import pprint
 from aiohttp import ClientSession, WSMsgType, web
 from aiohttp.web_request import Request
 
-from . import auth_helper, db, settings
+from . import db
 
 
 class WebSocketProxy:
@@ -37,8 +37,8 @@ class WebSocketProxy:
         responses:
             "200":
                  description: successful operation.
-            "401":
-                description: token is not valid
+            "404":
+                description: job_id might not be valid
             "400":
                 description: WS negotiation failed
         """
@@ -48,7 +48,6 @@ class WebSocketProxy:
         try:
             job_id = req.match_info["job_id"]
             service = req.match_info.get("service")
-            token = req.query.get("token")
         except KeyError as e:
             raise web.HTTPBadRequest()
         except ValueError as e:
@@ -60,21 +59,12 @@ class WebSocketProxy:
             raise web.HTTPBadRequest()
 
         try:
-            user_id = await auth_helper.get_username(f"Bearer {token}")
-        except PermissionError as e:
-            logging.warning(f"Job id {job_id}: {e}")
-            return web.Response(status=401)
-
-        try:
             async with await db.connect() as connection:
                 job = await connection.get_job(job_id)
         except db.DbError as e:
             logging.warning(e)
             raise web.HTTPNotFound()
 
-        if job.user != user_id:
-            logging.warning(f"User {user_id} tries to access other user's job (id  {job.id}) ")
-            raise web.HTTPForbidden()
         if not job.host:
             logging.warning(f"No host found for job {job_id}")
             raise web.HTTPNotFound()
@@ -87,7 +77,7 @@ class WebSocketProxy:
             await ws_client.prepare(req)
             async with session.ws_connect(f"ws://{hostname}", max_msg_size=2*1024*1024*1024) as ws_brayns:
                 try:
-                    logging.info(f"Hurray, a new client {user_id} with ip {req.headers.get('X-FORWARDED-FOR', req.remote)}")
+                    logging.info(f"Hurray, a new client with ip {req.headers.get('X-FORWARDED-FOR', req.remote)}")
                     task1 = asyncio.create_task(self.wsforward(ws_brayns, ws_client))
                     task2 = asyncio.create_task(self.wsforward(ws_client, ws_brayns))
                     await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
@@ -100,7 +90,7 @@ class WebSocketProxy:
             logging.error(f"Error on establishing WS: {str(e)}")
         finally:
             await session.close()
-            logging.info(f"Client {user_id} with ip: {req.headers.get('X-FORWARDED-FOR', req.remote)} has left the game")
+            logging.info(f"Client with ip: {req.headers.get('X-FORWARDED-FOR', req.remote)} has left the game")
 
         return ws_client
 
