@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 import asyncio
 import logging
 import pprint
@@ -10,52 +9,20 @@ from . import db
 
 
 class WebSocketProxy:
-    async def ws_handler(self, req: Request):
-        """
-        ---
-        parameters:
-        - in: query
-          name: job_id
-          schema:
-            type: string
-          required: true
-          description: |
-            Job id I gues
-          example:
-            213
-        - in: path
-          name: channel_name
-          schema:
-            enum:
-             - "RENDERER"
-             - "BACKEND"
-          required: true
-          description: |
-            Channel type to distingush if a connectgions is meant for backend or renderer
-          example:
-            backend
-        responses:
-            "200":
-                 description: successful operation.
-            "404":
-                description: job_id might not be valid
-            "400":
-                description: WS negotiation failed
-        """
-
-        if not self.verify_headers(req):
+    async def ws_handler(self, request: Request):
+        if not self.verify_headers(request):
             return web.HTTPBadRequest(reason="Headers not verified")
         try:
-            job_id = req.match_info["job_id"]
-            service = req.match_info.get("service")
-        except KeyError as e:
+            job_id = request.match_info["job_id"]
+            service = request.match_info.get("service")
+        except KeyError:
             raise web.HTTPBadRequest()
-        except ValueError as e:
+        except ValueError:
             raise web.HTTPNotFound()
         except PermissionError as e:
             logging.warning(str(e))
             raise web.HTTPUnauthorized(reason=str(e))
-        except Exception as e:
+        except Exception:
             raise web.HTTPBadRequest()
 
         try:
@@ -70,41 +37,42 @@ class WebSocketProxy:
             raise web.HTTPNotFound()
 
         hostname = job.host + (":5000" if service == "renderer" else ":8000")
-        session = None
+
+        session = ClientSession()
+        ws_client = web.WebSocketResponse(max_msg_size=2 * 1024 * 1024 * 1024)
         try:
-            session = ClientSession()
-            ws_client = web.WebSocketResponse(max_msg_size=2*1024*1024*1024)
-            await ws_client.prepare(req)
-            async with session.ws_connect(f"ws://{hostname}", max_msg_size=2*1024*1024*1024) as ws_brayns:
+            await ws_client.prepare(request)
+
+            async with session.ws_connect(f"ws://{hostname}", max_msg_size=2 * 1024 * 1024 * 1024) as ws_brayns:
                 try:
-                    logging.info(f"Hurray, a new client with ip {req.headers.get('X-FORWARDED-FOR', req.remote)}")
+                    logging.info(
+                        f"Hurray, a new client with ip {request.headers.get('X-FORWARDED-FOR', request.remote)}"
+                    )
                     task1 = asyncio.create_task(self.wsforward(ws_brayns, ws_client))
                     task2 = asyncio.create_task(self.wsforward(ws_client, ws_brayns))
                     await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
-
                 except Exception as e:
                     await ws_brayns.close()
                     raise Exception(f"Client or server exception in WS processing: {str(e)}")
-
         except Exception as e:
             logging.error(f"Error on establishing WS: {str(e)}")
         finally:
             await session.close()
-            logging.info(f"Client with ip: {req.headers.get('X-FORWARDED-FOR', req.remote)} has left the game")
+            logging.info(f"Client with ip: {request.headers.get('X-FORWARDED-FOR', request.remote)} has left the game")
 
         return ws_client
 
     @staticmethod
-    def verify_headers(req):
-        request_headers = req.headers.copy()
+    def verify_headers(request: Request):
+        request_headers = request.headers.copy()
         try:
             return (
                 request_headers["Connection"].lower() == "keep-alive, upgrade"
                 or request_headers["Connection"].lower() == "upgrade"
                 and request_headers["Upgrade"].lower() == "websocket"
-                and req.method == "GET"
+                and request.method == "GET"
             )
-        except:
+        except Exception:
             return False
 
     async def wsforward(self, ws_from, ws_to):

@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 import argparse
 import asyncio
 import logging
@@ -7,11 +6,17 @@ import ssl
 from aiohttp import web
 from aiohttp_swagger import setup_swagger
 
-from . import logger, sentry, settings, websocket_proxy
+from . import logger, sentry, settings
 from .utils import setup_cors
+from .websocket_proxy import WebSocketProxy
 
 
-async def start_webapp(args):
+async def main(args):
+    logger.configure()
+
+    if settings.ENVIRONMENT:
+        sentry.set_up()
+
     if args.ssl:
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
         ssl_context.check_hostname = False
@@ -24,43 +29,39 @@ async def start_webapp(args):
         [
             web.get(
                 "/{job_id}/{service:renderer|backend}",
-                websocket_proxy.WebSocketProxy().ws_handler,
+                WebSocketProxy().ws_handler,
             )
         ]
     )
 
     setup_cors(app)
-    webapp_runner = web.AppRunner(app, access_log=None)
+    runner = web.AppRunner(app, access_log=None)
 
     if settings.SWAGGER_ENABLED:
         setup_swagger(app)
 
-    await webapp_runner.setup()
-    site = web.TCPSite(webapp_runner, args.address, args.port, ssl_context=ssl_context)
-    logging.info(
-        f"VMM webscocket worker running at {args.address}:{args.port}", extra=dict(detail="test")
-    )
+    await runner.setup()
+
+    site = web.TCPSite(runner, args.address, args.port, ssl_context=ssl_context)
+
+    logging.info(f"VMM webscocket worker running at {args.address}:{args.port}")
+
     await site.start()
-    return webapp_runner
-
-
-def main(args):
-    if settings.ENVIRONMENT:
-        sentry.set_up()
-
-    loop = asyncio.get_event_loop()
-    runner = loop.run_until_complete(start_webapp(args))
 
     try:
-        loop.run_forever()
+        await asyncio.Future()
     except KeyboardInterrupt:
-        loop.run_until_complete(runner.cleanup())
+        await runner.cleanup()
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="websocket proxy application")
     parser.add_argument(
-        "--port", dest="port", type=int, default=settings.BASE_PORT, help="port to bind to"
+        "--port",
+        dest="port",
+        type=int,
+        default=settings.BASE_PORT,
+        help="port to bind to",
     )
     parser.add_argument(
         "--address",
@@ -70,4 +71,4 @@ if __name__ == "__main__":
         default=settings.BASE_HOST,
     )
     parser.add_argument("--ssl", dest="ssl", action="store_true", help="force SSL")
-    main(parser.parse_args())
+    asyncio.run(main(parser.parse_args()))

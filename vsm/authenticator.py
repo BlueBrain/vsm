@@ -1,11 +1,9 @@
 import logging
+from http import HTTPStatus
 
 import aiohttp
-# TODO move to settings/config
-BBP_KEYCLOAK_USER_INFO_URL = (
-    "https://bbpauth.epfl.ch/auth/realms/BBP/protocol/openid-connect/userinfo"
-)
-BBP_KEYCLOAK_HOST = "bbpauth.epfl.ch"
+
+from .settings import BBP_KEYCLOAK_HOST, BBP_KEYCLOAK_USER_INFO_URL
 
 
 async def get_username(token: str):
@@ -15,10 +13,11 @@ async def get_username(token: str):
         "Host": BBP_KEYCLOAK_HOST,
         "Authorization": token,
     }
+
     logging.debug(f"Request headers to `{url}`: {request_headers}")
+
     async with aiohttp.ClientSession() as session:
         client_response = await session.get(url, headers=request_headers)
-        from http import HTTPStatus
 
         if client_response.status == HTTPStatus.OK:
             return (await client_response.json())["email"]

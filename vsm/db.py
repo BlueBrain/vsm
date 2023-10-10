@@ -1,10 +1,9 @@
-import asyncio
 from dataclasses import dataclass
 from typing import Protocol
 
 import asyncpg
 
-from vsm import settings
+from .settings import DB_HOST, DB_NAME, DB_PASSWORD, DB_USERNAME
 
 
 @dataclass
@@ -18,7 +17,7 @@ class DbError(Exception):
     ...
 
 
-class DbConnector(Protocol):
+class DbConnection(Protocol):
     async def __aenter__(self):
         return self
 
@@ -41,7 +40,7 @@ class DbConnector(Protocol):
         ...
 
 
-class PsqlConnector(DbConnector):
+class PsqlConnection(DbConnection):
     def __init__(self, connection: asyncpg.Connection) -> None:
         self._connection = connection
 
@@ -109,13 +108,13 @@ class PsqlConnector(DbConnector):
 #     await connection.execute(query)
 
 
-async def connect() -> DbConnector:
+async def connect() -> DbConnection:
     connection = await asyncpg.connect(
-        host=settings.DB_HOST,
-        database=settings.DB_NAME,
-        user=settings.DB_USERNAME,
-        password=settings.DB_PASSWORD,
+        host=DB_HOST,
+        database=DB_NAME,
+        user=DB_USERNAME,
+        password=DB_PASSWORD,
     )
     # await create_table(connection)
     # await drop_table(connection)
-    return PsqlConnector(connection)
+    return PsqlConnection(connection)

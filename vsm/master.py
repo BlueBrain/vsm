@@ -1,4 +1,3 @@
-#!/usr/bin/python3
 import argparse
 import asyncio
 import logging
@@ -9,12 +8,27 @@ from aiohttp import ClientSession, TCPConnector, web
 from aiohttp_swagger import setup_swagger
 
 from . import logger, sentry, settings
-from .unicore_handler import UnicoreHandler
-from .unicore_scheduler import UnicoreScheduler
+from .allocator import JobAllocator
+from .aws_allocator import AwsAllocator
+from .scheduler import JobScheduler
+from .unicore_allocator import UnicoreAllocator
 from .utils import setup_cors
 
 
-async def start_webapp(args):
+def create_allocator(name: str, session: ClientSession) -> JobAllocator:
+    if name == "UNICORE":
+        return UnicoreAllocator(session)
+    if name == "AWS":
+        return AwsAllocator()
+    raise ValueError(f"Invalid job allocator {name}")
+
+
+async def main(args):
+    logger.configure()
+
+    if settings.ENVIRONMENT:
+        sentry.set_up()
+
     if args.ssl:
         logging.info("Enabling SSL")
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
@@ -26,45 +40,40 @@ async def start_webapp(args):
     ca_exists = os.path.exists(settings.UNICORE_CA_FILE)
     if ca_exists:
         logging.info(f"Using CA file: {settings.UNICORE_CA_FILE}")
-    conn = TCPConnector(
-        ssl=ssl.create_default_context(cafile=settings.UNICORE_CA_FILE if ca_exists else None)
-    )
-    UnicoreHandler().set_session(ClientSession(connector=conn))
 
-    app = web.Application()
-    handler = UnicoreScheduler()
+    connector = TCPConnector(ssl=ssl.create_default_context(cafile=settings.UNICORE_CA_FILE if ca_exists else None))
 
-    scheduler_routes = [
-        web.post("/start", handler.start),
-        web.get("/status/{job_id:[^{}]+}", handler.get_status),
-    ]
+    async with ClientSession(connector=connector) as session:
+        allocator = create_allocator(settings.JOB_ALLOCATOR, session)
+        scheduler = JobScheduler(allocator)
 
-    app.router.add_routes(scheduler_routes)
-    setup_cors(app)
+        app = web.Application()
 
-    webapp_runner = web.AppRunner(app, access_log=None)
+        scheduler_routes = [
+            web.post("/start", scheduler.start),
+            web.get("/status/{job_id:[^{}]+}", scheduler.get_status),
+        ]
 
-    if settings.SWAGGER_ENABLED:
-        setup_swagger(app)
+        app.router.add_routes(scheduler_routes)
+        setup_cors(app)
 
-    await webapp_runner.setup()
-    site = web.TCPSite(webapp_runner, args.address, args.port, ssl_context=ssl_context)
-    logging.info(f"VMM master running at {args.address}:{args.port}")
-    await site.start()
-    return webapp_runner
+        runner = web.AppRunner(app, access_log=None)
 
+        if settings.SWAGGER_ENABLED:
+            setup_swagger(app)
 
-def main(args):
-    if settings.ENVIRONMENT:
-        sentry.set_up()
+        await runner.setup()
 
-    loop = asyncio.get_event_loop()
-    runner = loop.run_until_complete(start_webapp(args))
+        site = web.TCPSite(runner, args.address, args.port, ssl_context=ssl_context)
 
-    try:
-        loop.run_forever()
-    except KeyboardInterrupt:
-        loop.run_until_complete(runner.cleanup())
+        logging.info(f"VMM master running at {args.address}:{args.port}")
+
+        await site.start()
+
+        try:
+            await asyncio.Future()
+        except KeyboardInterrupt:
+            await runner.cleanup()
 
 
 if __name__ == "__main__":
@@ -84,4 +93,4 @@ if __name__ == "__main__":
         default=settings.BASE_HOST,
     )
     parser.add_argument("--ssl", dest="ssl", action="store_true", help="force SSL")
-    main(parser.parse_args())
+    asyncio.run(main(parser.parse_args()))
