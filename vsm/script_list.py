@@ -51,7 +51,7 @@ echo "HOSTNAME=$(hostname -f)"
 source ${BACKEND_DIR}venv/bin/activate
 
 python ${BACKEND_DIR}src/main.py \
-        --port=$BACKEND_PORT 
+        --port=$BACKEND_PORT
         """,
     }
 ]
