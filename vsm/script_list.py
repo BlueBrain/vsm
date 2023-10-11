@@ -16,42 +16,40 @@ USE_CASES = [
 source /etc/profile.d/bb5.sh
 source /etc/profile.d/modules.sh
 
-export BACKEND_DIR=/gpfs/bbp.cscs.ch/project/proj3/software/BraynsCircuitStudio/backend/
-export BACKEND_PORT=8000
 export BRAYNS_PORT=5000
-export LOG_LEVEL=DEBUG
-export USE_TLS=0
-export UNICORE_HOSTNAME=$(hostname -f)
-export UNICORE_CERT_FILEPATH=${TMPDIR}/${UNICORE_HOSTNAME}.crt
-export UNICORE_PRIVATE_KEY_FILEPATH=${TMPDIR}/${UNICORE_HOSTNAME}.key
+export BRAYNS_LOG_LEVEL=info
+export BACKEND_PORT=8000
+export BACKEND_LOG_LEVEL=INFO
 
 echo Brayns Circuit Studio startup script
 echo ----------------------
-echo UNICORE_HOSTNAME=$UNICORE_HOSTNAME
-echo UNICORE_CERT_FILEPATH=$UNICORE_CERT_FILEPATH
-echo UNICORE_PRIVATE_KEY_FILEPATH=$UNICORE_PRIVATE_KEY_FILEPATH
-echo TMPDIR=$TMPDIR
 echo BACKEND_PORT=$BACKEND_PORT
 echo BRAYNS_PORT=$BRAYNS_PORT
 echo ----------------------
 echo
 echo Loading brayns/3.2.2 from unstable...
+
 module purge
 module load unstable
 module load brayns/3.2.2
+
 braynsService \
     --uri 0.0.0.0:${BRAYNS_PORT} \
-    --log-level debug \
+    --log-level ${BRAYNS_LOG_LEVEL} \
     --plugin braynsCircuitExplorer \
     --plugin braynsAtlasExplorer &
 
 while true; do nc -z localhost ${BRAYNS_PORT}; if [ $? -eq 0 ]; then break; fi; sleep 1; done
+
 echo "HOSTNAME=$(hostname -f)"
 
-source ${BACKEND_DIR}venv/bin/activate
+module load py-bcsb/2.0.0
 
-python ${BACKEND_DIR}src/main.py \
-        --port=$BACKEND_PORT
+bcsb \
+    --host 0.0.0.0 \
+    --port ${BACKEND_PORT} \
+    --log_level ${BACKEND_LOG_LEVEL} \
+    --base_directory /gpfs/bbp.cscs.ch
         """,
     }
 ]
