@@ -41,15 +41,21 @@ braynsService \
 
 while true; do nc -z localhost ${BRAYNS_PORT}; if [ $? -eq 0 ]; then break; fi; sleep 1; done
 
-echo "HOSTNAME=$(hostname -f)"
-
 module load py-bcsb/2.0.0
 
 bcsb \
     --host 0.0.0.0 \
     --port ${BACKEND_PORT} \
     --log_level ${BACKEND_LOG_LEVEL} \
-    --base_directory /gpfs/bbp.cscs.ch
-        """,
+    --base_directory /gpfs/bbp.cscs.ch &
+
+BACKEND_PID=$!
+
+while true; do nc -z localhost ${BACKEND_PORT}; if [ $? -eq 0 ]; then break; fi; sleep 1; done
+
+echo "HOSTNAME=$(hostname -f)"
+
+wait $BACKEND_PID
+""",
     }
 ]
