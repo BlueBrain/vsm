@@ -2,7 +2,9 @@ from typing import Any
 
 from .allocator import JobAllocator, JobDetails, JobNotFound
 from .authenticator import get_username
-from .settings import AWS_HOST, AWS_JOB_ID
+from .settings import AWS_HOST
+
+AWS_JOB_ID = "aws_fixed_job_id"
 
 
 class AwsAllocator(JobAllocator):

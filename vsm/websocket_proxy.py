@@ -1,11 +1,13 @@
 import asyncio
 import logging
-import pprint
+from typing import cast
 
-from aiohttp import ClientSession, WSMsgType, web
+from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, web
 from aiohttp.web_request import Request
 
 from . import db
+
+WebSocketLike = ClientWebSocketResponse | web.WebSocketResponse
 
 
 class WebSocketProxy:
@@ -63,7 +65,7 @@ class WebSocketProxy:
         return ws_client
 
     @staticmethod
-    def verify_headers(request: Request):
+    def verify_headers(request: Request) -> bool:
         request_headers = request.headers.copy()
         try:
             return (
@@ -75,7 +77,7 @@ class WebSocketProxy:
         except Exception:
             return False
 
-    async def wsforward(self, ws_from, ws_to):
+    async def wsforward(self, ws_from: WebSocketLike, ws_to: WebSocketLike) -> None:
         try:
             async for msg in ws_from:
                 mt = msg.type
@@ -88,13 +90,11 @@ class WebSocketProxy:
                     logging.error("WSMsgType is closed")
                 elif ws_to.closed:
                     logging.error("ws_to is closed")
-                    await ws_to.close(code=ws_to.close_code, message=msg.extra)
+                    code = cast(int, ws_to.close_code)
+                    await ws_to.close(code=code, message=msg.extra)
                 elif ws_from.closed:
                     logging.error("ws_from is closed")
                 else:
-                    raise ValueError(
-                        "unexpected message type: %s",
-                        pprint.pformat(msg),
-                    )
+                    raise ValueError(f"unexpected message type: {mt}")
         except Exception as e:
             logging.error(f"ws forward exception, {str(e)}")

@@ -5,7 +5,7 @@ from typing import Any
 from aiohttp import ClientSession
 
 from .allocator import AllocationError, JobAllocator, JobDetails, JobNotFound
-from .settings import UNICORE_ENDPOINT, UNICORE_USPACE_SUFFIX
+from .settings import UNICORE_ENDPOINT
 
 
 class UnicoreAllocator(JobAllocator):
@@ -55,7 +55,7 @@ class UnicoreAllocator(JobAllocator):
         try:
             content = await self._get_stdout(token, job_id)
         except Exception:
-            logging.debug(f"Host not ready ?")
+            logging.debug("Host not ready ?")
             return JobDetails(job_running=True, end_time=end_time)
 
         host = _get_hostname(content.decode())
@@ -63,7 +63,7 @@ class UnicoreAllocator(JobAllocator):
         return JobDetails(job_running=True, end_time=end_time, host=host)
 
     async def _get_stdout(self, token: str, job_id: str) -> bytes:
-        storage = f"{UNICORE_ENDPOINT}/storages/{job_id}{UNICORE_USPACE_SUFFIX}"
+        storage = f"{UNICORE_ENDPOINT}/storages/{job_id}-uspace"
         url = f"{storage}/files/stdout"
         headers = _get_stream_headers(token)
 

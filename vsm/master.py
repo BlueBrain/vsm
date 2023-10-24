@@ -23,6 +23,10 @@ def create_allocator(name: str, session: ClientSession) -> JobAllocator:
     raise ValueError(f"Invalid job allocator {name}")
 
 
+async def healthcheck(_: web.Request) -> web.Response:
+    return web.Response(status=200)
+
+
 async def main(args):
     logger.configure()
 
@@ -49,12 +53,13 @@ async def main(args):
 
         app = web.Application()
 
-        scheduler_routes = [
+        routes = [
+            web.get("/healthz", healthcheck),
             web.post("/start", scheduler.start),
             web.get("/status/{job_id:[^{}]+}", scheduler.get_status),
         ]
 
-        app.router.add_routes(scheduler_routes)
+        app.router.add_routes(routes)
         setup_cors(app)
 
         runner = web.AppRunner(app, access_log=None)
@@ -66,7 +71,7 @@ async def main(args):
 
         site = web.TCPSite(runner, args.address, args.port, ssl_context=ssl_context)
 
-        logging.info(f"VMM master running at {args.address}:{args.port}")
+        logging.info(f"VSM master running at {args.address}:{args.port}")
 
         await site.start()
 

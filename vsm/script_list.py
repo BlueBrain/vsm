@@ -1,5 +1,3 @@
-UNICORE_DEFAULT_EXECUTABLE_SCRIPT = "/bin/bash input.sh"
-
 USE_CASES = [
     {
         "Name": "SBO1",
@@ -57,5 +55,8 @@ echo "HOSTNAME=$(hostname -f)"
 
 wait $BACKEND_PID
 """,
-    }
+    },
+    {
+        "Name": "AWS_TEST",
+    },
 ]
