@@ -90,22 +90,22 @@ class PsqlConnection(DbConnection):
             raise DbError(str(e))
 
 
-# async def create_table(connection: asyncpg.Connection) -> None:
-#     query = """
-#         CREATE TABLE IF NOT EXISTS jobs (
-#             job_id VARCHAR(255) PRIMARY KEY,
-#             user_id VARCHAR(255) NOT NULL,
-#             hostname VARCHAR(255) NOT NULL
-#         )
-#     """
-#     await connection.execute(query)
+async def create_table(connection: asyncpg.Connection) -> None:
+    query = """
+        CREATE TABLE IF NOT EXISTS jobs (
+            job_id VARCHAR(255) PRIMARY KEY,
+            user_id VARCHAR(255) NOT NULL,
+            hostname VARCHAR(255) NOT NULL
+        )
+    """
+    await connection.execute(query)
 
-#
-# async def drop_table(connection: asyncpg.Connection) -> None:
-#     query = """
-#         DROP TABLE IF EXISTS jobs
-#     """
-#     await connection.execute(query)
+
+async def drop_table(connection: asyncpg.Connection) -> None:
+    query = """
+        DROP TABLE IF EXISTS jobs
+    """
+    await connection.execute(query)
 
 
 async def connect() -> DbConnection:

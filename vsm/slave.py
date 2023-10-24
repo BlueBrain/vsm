@@ -11,6 +11,10 @@ from .utils import setup_cors
 from .websocket_proxy import WebSocketProxy
 
 
+async def healthcheck(_: web.Request) -> web.Response:
+    return web.Response(status=200)
+
+
 async def main(args):
     logger.configure()
 
@@ -24,15 +28,16 @@ async def main(args):
     else:
         ssl_context = None
 
+    proxy = WebSocketProxy()
+
     app = web.Application()
-    app.router.add_routes(
-        [
-            web.get(
-                "/{job_id}/{service:renderer|backend}",
-                WebSocketProxy().ws_handler,
-            )
-        ]
-    )
+
+    routes = [
+        web.get("/healthz", healthcheck),
+        web.get("/{job_id}/{service:renderer|backend}", proxy.ws_handler),
+    ]
+
+    app.router.add_routes(routes)
 
     setup_cors(app)
     runner = web.AppRunner(app, access_log=None)
