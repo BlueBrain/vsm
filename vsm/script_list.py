@@ -39,7 +39,7 @@ braynsService \
 
 while true; do nc -z localhost ${BRAYNS_PORT}; if [ $? -eq 0 ]; then break; fi; sleep 1; done
 
-module load py-bcsb/2.0.0
+module load py-bcsb/2.1.1
 
 bcsb \
     --host 0.0.0.0 \
