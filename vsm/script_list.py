@@ -25,11 +25,11 @@ echo BACKEND_PORT=$BACKEND_PORT
 echo BRAYNS_PORT=$BRAYNS_PORT
 echo ----------------------
 echo
-echo Loading brayns/3.2.2 from unstable...
+echo Loading brayns/3.4.0 from unstable...
 
 module purge
 module load unstable
-module load brayns/3.2.2
+module load brayns/3.4.0
 
 braynsService \
     --uri 0.0.0.0:${BRAYNS_PORT} \
