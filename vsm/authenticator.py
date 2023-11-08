@@ -19,7 +19,7 @@ async def get_username(token: str):
     async with ClientSession() as session:
         response = await session.get(url, headers=headers)
         logging.debug(f"Auth response status code: {response.status}")
-        logging.debug(f"Auth response body: {response.content}")
+        logging.debug(f"Auth response body: {response.content.read()}")
         if response.status != HTTPStatus.OK:
             raise PermissionError("Token issue")
 
