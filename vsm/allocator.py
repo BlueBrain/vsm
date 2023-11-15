@@ -13,7 +13,7 @@ class JobNotFound(Exception):
 @dataclass
 class JobDetails:
     job_running: bool = False
-    end_time: float | None = None
+    end_time: str | None = None
     host: str | None = None
 
 

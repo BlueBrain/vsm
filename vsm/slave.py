@@ -11,7 +11,7 @@ from .utils import setup_cors
 from .websocket_proxy import WebSocketProxy
 
 
-async def healthcheck(_: web.Request) -> web.Response:
+async def healthcheck(request: web.Request) -> web.Response:
     return web.Response(status=200)
 
 
