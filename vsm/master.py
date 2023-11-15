@@ -23,7 +23,7 @@ def create_allocator(name: str, session: ClientSession) -> JobAllocator:
     raise ValueError(f"Invalid job allocator {name}")
 
 
-async def healthcheck(_: web.Request) -> web.Response:
+async def healthcheck(request: web.Request) -> web.Response:
     return web.Response(status=200)
 
 

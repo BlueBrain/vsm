@@ -1,19 +1,18 @@
+import uuid
 from typing import Any
 
-from .allocator import JobAllocator, JobDetails, JobNotFound
+from .allocator import JobAllocator, JobDetails
 from .authenticator import get_username
 from .settings import AWS_HOST
 
-AWS_JOB_ID = "aws_fixed_job_id"
+END_TIME = "2030-01-01T00:00:00"
 
 
 class AwsAllocator(JobAllocator):
-    async def create_job(self, token: str, _: dict[str, Any]) -> str:
+    async def create_job(self, token: str, payload: dict[str, Any]) -> str:
         await get_username(token)
-        return AWS_JOB_ID
+        return str(uuid.uuid4())
 
     async def get_job_details(self, token: str, job_id: str) -> JobDetails:
         await get_username(token)
-        if job_id != AWS_JOB_ID:
-            raise JobNotFound(job_id)
-        return JobDetails(job_running=True, end_time=100000000000, host=AWS_HOST)
+        return JobDetails(job_running=True, end_time=END_TIME, host=AWS_HOST)
