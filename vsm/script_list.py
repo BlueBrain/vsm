@@ -25,11 +25,11 @@ echo BACKEND_PORT=$BACKEND_PORT
 echo BRAYNS_PORT=$BRAYNS_PORT
 echo ----------------------
 echo
-echo Loading brayns/3.4.0 from unstable...
+echo Loading brayns/3.5.1 from unstable...
 
 module purge
 module load unstable
-module load brayns/3.4.0
+module load brayns/3.5.1
 
 braynsService \
     --uri 0.0.0.0:${BRAYNS_PORT} \
@@ -39,7 +39,9 @@ braynsService \
 
 while true; do nc -z localhost ${BRAYNS_PORT}; if [ $? -eq 0 ]; then break; fi; sleep 1; done
 
-module load py-bcsb/2.1.1
+echo Loading py-bcsb/2.1.2 from unstable...
+
+module load py-bcsb/2.1.2
 
 bcsb \
     --host 0.0.0.0 \
