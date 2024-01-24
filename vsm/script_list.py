@@ -39,9 +39,9 @@ braynsService \
 
 while true; do nc -z localhost ${BRAYNS_PORT}; if [ $? -eq 0 ]; then break; fi; sleep 1; done
 
-echo Loading py-bcsb/2.1.2 from unstable...
+echo Loading py-bcsb/2.2.0 from unstable...
 
-module load py-bcsb/2.1.2
+module load py-bcsb/2.2.0
 
 bcsb \
     --host 0.0.0.0 \
