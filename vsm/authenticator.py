@@ -3,26 +3,42 @@ from http import HTTPStatus
 
 from aiohttp import ClientSession
 
-from .settings import KEYCLOAK_HOST, KEYCLOAK_USER_INFO_URL
+from .settings import KEYCLOAK_HOST, KEYCLOAK_USER_INFO_URL, USE_KEYCLOAK
 
 
-async def get_username(token: str):
-    url = KEYCLOAK_USER_INFO_URL
+class Authenticator:
+    def __init__(self, session: ClientSession) -> None:
+        self._session = session
 
-    headers = {
-        "Host": KEYCLOAK_HOST,
-        "Authorization": token,
-    }
+    async def get_username(self, token: str) -> str | None:
+        if not USE_KEYCLOAK:
+            return None
 
-    logging.debug(f"Request headers to `{url}`: {headers}")
+        url = KEYCLOAK_USER_INFO_URL
+        headers = {
+            "Host": KEYCLOAK_HOST,
+            "Authorization": token,
+        }
 
-    async with ClientSession() as session:
-        response = await session.get(url, headers=headers)
-        logging.debug(f"Auth response status code: {response.status}")
-        logging.debug(f"Auth response body: {response.content.read()}")
+        logging.debug(f"Keycloak request: `{url=}`: {headers=}")
+
+        response = await self._session.get(url, headers=headers)
+
+        logging.debug(f"Keycloak response status code: {response.status}")
+
         if response.status != HTTPStatus.OK:
-            raise PermissionError("Token issue")
+            raise PermissionError("Invalid Keycloak token")
 
         data = await response.json()
 
-        return data["email"]
+        logging.debug(f"Keycloak response body: {data}")
+
+        if not isinstance(data, dict):
+            raise ValueError("Invalid Keycloak response")
+
+        email = data.get("email")
+
+        if email is None:
+            raise ValueError("No email in Keycloak response")
+
+        return email

@@ -1,18 +1,81 @@
-import uuid
+import logging
 from typing import Any
 
-from .allocator import JobAllocator, JobDetails
-from .authenticator import get_username
-from .settings import AWS_HOST
+import boto3
+from aiohttp import ClientSession
 
-END_TIME = "2030-01-01T00:00:00"
+from vsm.settings import (
+    AWS_CAPACITY_PROVIDER,
+    AWS_CLUSTER,
+    AWS_SECURITY_GROUPS,
+    AWS_SUBNETS,
+    AWS_TASK_DEFINITION,
+)
+
+from .allocator import AllocationError, JobAllocator, JobDetails
 
 
 class AwsAllocator(JobAllocator):
+    def __init__(self, session: ClientSession) -> None:
+        self._session = session
+        self._ecs_client = boto3.client("ecs")
+        boto3.set_stream_logger(level=logging.INFO)
+
     async def create_job(self, token: str, payload: dict[str, Any]) -> str:
-        await get_username(token)
-        return str(uuid.uuid4())
+        response = self._ecs_client.run_task(
+            cluster=AWS_CLUSTER,
+            taskDefinition=AWS_TASK_DEFINITION,
+            networkConfiguration={
+                "awsvpcConfiguration": {
+                    "assignPublicIp": "DISABLED",
+                    "securityGroups": AWS_SECURITY_GROUPS,
+                    "subnets": AWS_SUBNETS,
+                }
+            },
+            capacityProviderStrategy=[
+                {
+                    "capacityProvider": AWS_CAPACITY_PROVIDER,
+                    "weight": 1,
+                    "base": 0,
+                }
+            ],
+        )
+
+        logging.debug(f"AWS response {response}")
+
+        try:
+            task_arn = response["tasks"][0]["taskArn"]
+        except (KeyError, IndexError):
+            raise AllocationError("Invalid response type from AWS client")
+
+        if not isinstance(task_arn, str):
+            raise AllocationError("Invalid task ARN from AWS client")
+
+        task_id = task_arn.rsplit("/", 1)[-1]
+
+        if len(task_id) != 32:
+            raise AllocationError("Invalid task ID from AWS client")
+
+        return task_id
 
     async def get_job_details(self, token: str, job_id: str) -> JobDetails:
-        await get_username(token)
-        return JobDetails(job_running=True, end_time=END_TIME, host=AWS_HOST)
+        response = self._ecs_client.describe_tasks(cluster=AWS_CLUSTER, tasks=[job_id])
+
+        try:
+            host_ip = response["tasks"][0]["containers"][0]["networkInterfaces"][0]["privateIpv4Address"]
+        except (KeyError, IndexError) as e:
+            logging.error(f"Cannot get host_ip from AWS response {e}")
+            return JobDetails(job_running=False)
+
+        if not await self._check_brayns_responds(host_ip):
+            return JobDetails(job_running=False)
+
+        return JobDetails(job_running=True, host=host_ip)
+
+    async def _check_brayns_responds(self, host_ip: str) -> bool:
+        try:
+            response = await self._session.get(f"http://{host_ip}:5000/healthz")
+            return response.ok
+        except Exception as e:
+            logging.error(f"Cannot talk to brayns {e}")
+            return False
