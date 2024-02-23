@@ -3,23 +3,19 @@ import asyncio
 import logging
 import ssl
 
-from aiohttp import web
-from aiohttp_swagger import setup_swagger
+from aiohttp import ClientSession, web
 
-from . import logger, sentry, settings
+from . import logger, settings
 from .utils import setup_cors
 from .websocket_proxy import WebSocketProxy
 
 
 async def healthcheck(request: web.Request) -> web.Response:
-    return web.Response(status=200)
+    return web.HTTPOk()
 
 
 async def main(args):
     logger.configure()
-
-    if settings.ENVIRONMENT:
-        sentry.set_up()
 
     if args.ssl:
         ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
@@ -28,35 +24,33 @@ async def main(args):
     else:
         ssl_context = None
 
-    proxy = WebSocketProxy()
+    async with ClientSession() as session:
+        proxy = WebSocketProxy(session)
 
-    app = web.Application()
+        app = web.Application()
 
-    routes = [
-        web.get("/healthz", healthcheck),
-        web.get("/{job_id}/{service:renderer|backend}", proxy.ws_handler),
-    ]
+        routes = [
+            web.get("/healthz", healthcheck),
+            web.get("/{job_id}/{service:renderer|backend}", proxy.ws_handler),
+        ]
 
-    app.router.add_routes(routes)
+        app.router.add_routes(routes)
 
-    setup_cors(app)
-    runner = web.AppRunner(app, access_log=None)
+        setup_cors(app)
+        runner = web.AppRunner(app, access_log=None)
 
-    if settings.SWAGGER_ENABLED:
-        setup_swagger(app)
+        await runner.setup()
 
-    await runner.setup()
+        site = web.TCPSite(runner, args.address, args.port, ssl_context=ssl_context)
 
-    site = web.TCPSite(runner, args.address, args.port, ssl_context=ssl_context)
+        logging.info(f"VSM slave running at {args.address}:{args.port}")
 
-    logging.info(f"VMM webscocket worker running at {args.address}:{args.port}")
+        await site.start()
 
-    await site.start()
-
-    try:
-        await asyncio.Future()
-    except KeyboardInterrupt:
-        await runner.cleanup()
+        try:
+            await asyncio.Future()
+        except KeyboardInterrupt:
+            await runner.cleanup()
 
 
 if __name__ == "__main__":
@@ -65,7 +59,7 @@ if __name__ == "__main__":
         "--port",
         dest="port",
         type=int,
-        default=settings.BASE_PORT,
+        default=settings.SLAVE_PORT,
         help="port to bind to",
     )
     parser.add_argument(

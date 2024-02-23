@@ -5,10 +5,10 @@ import os
 import ssl
 
 from aiohttp import ClientSession, TCPConnector, web
-from aiohttp_swagger import setup_swagger
 
-from . import logger, sentry, settings
+from . import logger, settings
 from .allocator import JobAllocator
+from .authenticator import Authenticator
 from .aws_allocator import AwsAllocator
 from .scheduler import JobScheduler
 from .unicore_allocator import UnicoreAllocator
@@ -19,19 +19,16 @@ def create_allocator(name: str, session: ClientSession) -> JobAllocator:
     if name == "UNICORE":
         return UnicoreAllocator(session)
     if name == "AWS":
-        return AwsAllocator()
+        return AwsAllocator(session)
     raise ValueError(f"Invalid job allocator {name}")
 
 
 async def healthcheck(request: web.Request) -> web.Response:
-    return web.Response(status=200)
+    return web.HTTPOk()
 
 
 async def main(args):
     logger.configure()
-
-    if settings.ENVIRONMENT:
-        sentry.set_up()
 
     if args.ssl:
         logging.info("Enabling SSL")
@@ -48,8 +45,9 @@ async def main(args):
     connector = TCPConnector(ssl=ssl.create_default_context(cafile=settings.UNICORE_CA_FILE if ca_exists else None))
 
     async with ClientSession(connector=connector) as session:
+        authenticator = Authenticator(session)
         allocator = create_allocator(settings.JOB_ALLOCATOR, session)
-        scheduler = JobScheduler(allocator)
+        scheduler = JobScheduler(allocator, authenticator)
 
         app = web.Application()
 
@@ -63,9 +61,6 @@ async def main(args):
         setup_cors(app)
 
         runner = web.AppRunner(app, access_log=None)
-
-        if settings.SWAGGER_ENABLED:
-            setup_swagger(app)
 
         await runner.setup()
 
@@ -87,7 +82,7 @@ if __name__ == "__main__":
         "--port",
         dest="port",
         type=int,
-        default=settings.BASE_PORT,
+        default=settings.MASTER_PORT,
         help="port to bind to",
     )
     parser.add_argument(
