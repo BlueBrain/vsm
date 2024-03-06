@@ -27,6 +27,9 @@ class DbConnection(Protocol):
     async def close(self) -> None:
         ...
 
+    async def create_table_if_not_exists(self) -> None:
+        ...
+
     async def get_job(self, id: str) -> Job:
         ...
 
@@ -47,6 +50,19 @@ class PsqlConnection(DbConnection):
     async def close(self) -> None:
         try:
             await self._connection.close()
+        except asyncpg.PostgresError as e:
+            raise DbError(str(e))
+
+    async def create_table_if_not_exists(self) -> None:
+        query = """
+            CREATE TABLE IF NOT EXISTS jobs (
+                job_id VARCHAR(255) PRIMARY KEY,
+                user_id VARCHAR(255) NOT NULL,
+                hostname VARCHAR(255) NOT NULL
+            )
+        """
+        try:
+            await self._connection.execute(query)
         except asyncpg.PostgresError as e:
             raise DbError(str(e))
 
@@ -90,24 +106,6 @@ class PsqlConnection(DbConnection):
             raise DbError(str(e))
 
 
-async def create_table(connection: asyncpg.Connection) -> None:
-    query = """
-        CREATE TABLE IF NOT EXISTS jobs (
-            job_id VARCHAR(255) PRIMARY KEY,
-            user_id VARCHAR(255) NOT NULL,
-            hostname VARCHAR(255) NOT NULL
-        )
-    """
-    await connection.execute(query)
-
-
-async def drop_table(connection: asyncpg.Connection) -> None:
-    query = """
-        DROP TABLE IF EXISTS jobs
-    """
-    await connection.execute(query)
-
-
 async def connect() -> DbConnection:
     connection = await asyncpg.connect(
         host=DB_HOST,
@@ -115,6 +113,4 @@ async def connect() -> DbConnection:
         user=DB_USERNAME,
         password=DB_PASSWORD,
     )
-    # await create_table(connection)
-    # await drop_table(connection)
     return PsqlConnection(connection)

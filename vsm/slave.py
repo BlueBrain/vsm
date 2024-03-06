@@ -54,7 +54,7 @@ async def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="websocket proxy application")
+    parser = argparse.ArgumentParser(description="VSM proxy application")
     parser.add_argument(
         "--port",
         dest="port",
