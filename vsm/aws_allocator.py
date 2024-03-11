@@ -12,7 +12,7 @@ from vsm.settings import (
     AWS_TASK_DEFINITION,
 )
 
-from .allocator import AllocationError, JobAllocator, JobDetails
+from .allocator import AllocationError, JobAllocator, JobDetails, JobNotFound
 
 
 class AwsAllocator(JobAllocator):
@@ -58,8 +58,19 @@ class AwsAllocator(JobAllocator):
 
         return task_id
 
+    async def destroy_job(self, token: str, job_id: str) -> None:
+        try:
+            response = self._ecs_client.stop_task(cluster=AWS_CLUSTER, task=job_id)
+        except Exception as e:
+            raise JobNotFound(str(e))
+
+        logging.debug(f"AWS stop response {response}")
+
     async def get_job_details(self, token: str, job_id: str) -> JobDetails:
-        response = self._ecs_client.describe_tasks(cluster=AWS_CLUSTER, tasks=[job_id])
+        try:
+            response = self._ecs_client.describe_tasks(cluster=AWS_CLUSTER, tasks=[job_id])
+        except Exception as e:
+            raise JobNotFound(str(e))
 
         try:
             host_ip = response["tasks"][0]["containers"][0]["networkInterfaces"][0]["privateIpv4Address"]

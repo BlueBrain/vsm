@@ -6,7 +6,7 @@ import ssl
 
 from aiohttp import ClientSession, TCPConnector, web
 
-from . import logger, settings
+from . import db, logger, settings
 from .allocator import JobAllocator
 from .authenticator import Authenticator
 from .aws_allocator import AwsAllocator
@@ -42,6 +42,9 @@ async def main(args):
     if ca_exists:
         logging.info(f"Using CA file: {settings.UNICORE_CA_FILE}")
 
+    async with await db.connect() as connection:
+        await connection.create_table_if_not_exists()
+
     connector = TCPConnector(ssl=ssl.create_default_context(cafile=settings.UNICORE_CA_FILE if ca_exists else None))
 
     async with ClientSession(connector=connector) as session:
@@ -54,6 +57,7 @@ async def main(args):
         routes = [
             web.get("/healthz", healthcheck),
             web.post("/start", scheduler.start),
+            web.post("/stop/{job_id:[^{}]+}", scheduler.stop),
             web.get("/status/{job_id:[^{}]+}", scheduler.get_status),
         ]
 
@@ -77,7 +81,7 @@ async def main(args):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="BBP MOOC proxy application")
+    parser = argparse.ArgumentParser(description="VSM master application")
     parser.add_argument(
         "--port",
         dest="port",
