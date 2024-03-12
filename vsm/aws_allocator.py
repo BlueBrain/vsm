@@ -25,6 +25,7 @@ class AwsAllocator(JobAllocator):
         response = self._ecs_client.run_task(
             cluster=AWS_CLUSTER,
             taskDefinition=AWS_TASK_DEFINITION,
+            enableExecuteCommand=True,
             networkConfiguration={
                 "awsvpcConfiguration": {
                     "assignPublicIp": "DISABLED",
