@@ -29,7 +29,7 @@ class WebSocketProxy:
             return web.HTTPNotFound(body=str(e))
         except PermissionError as e:
             return web.HTTPUnauthorized(body=str(e))
-        except Exception as e:
+        except Exception:
             return web.HTTPInternalServerError()
 
         try:

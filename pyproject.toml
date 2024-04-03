@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vsm"
+dynamic = ["version"]
+description = "Visualization Software Manager"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { file = "LICENSE.md" }
+authors = [
+    { "name" = "Pawel Podhajski", "email" = "pawel.podhajski@epfl.ch" },
+    { "name" = "Adrien Fleury", "email" = "adrien.fleury@epfl.ch" },
+]
+dependencies = ["aiohttp-cors", "aiohttp", "asyncpg", "boto3"]
+
+[project.optional-dependencies]
+dev = ["black", "isort", "mypy", "pytest", "ruff"]
+
+[project.urls]
+"Homepage" = "https://bbpgitlab.epfl.ch/viz/brayns/vsm"
+
+[project.scripts]
+vsm_master = "vsm:run_master"
+vsm_proxy = "vsm:run_master"
+
+[tool.setuptools.packages.find]
+include = ["vsm*"]
+
+[tool.setuptools.dynamic]
+version = { attr = "vsm.version.VERSION" }
+
+[tool.ruff]
+lint.ignore = ["E501"]
+
+[tool.isort]
+profile = "black"
+
+[tool.black]
+line-length = 119

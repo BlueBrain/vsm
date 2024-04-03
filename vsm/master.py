@@ -27,7 +27,26 @@ async def healthcheck(request: web.Request) -> web.Response:
     return web.HTTPOk()
 
 
-async def main(args):
+async def main():
+    parser = argparse.ArgumentParser(description="VSM master application")
+    parser.add_argument(
+        "--port",
+        dest="port",
+        type=int,
+        default=settings.MASTER_PORT,
+        help="port to bind to",
+    )
+    parser.add_argument(
+        "--address",
+        dest="address",
+        type=str,
+        help="address to bind to",
+        default=settings.BASE_HOST,
+    )
+    parser.add_argument("--ssl", dest="ssl", action="store_true", help="force SSL")
+
+    args = parser.parse_args()
+
     logger.configure()
 
     if args.ssl:
@@ -80,21 +99,9 @@ async def main(args):
             await runner.cleanup()
 
 
+def run_master() -> None:
+    asyncio.run(main())
+
+
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="VSM master application")
-    parser.add_argument(
-        "--port",
-        dest="port",
-        type=int,
-        default=settings.MASTER_PORT,
-        help="port to bind to",
-    )
-    parser.add_argument(
-        "--address",
-        dest="address",
-        type=str,
-        help="address to bind to",
-        default=settings.BASE_HOST,
-    )
-    parser.add_argument("--ssl", dest="ssl", action="store_true", help="force SSL")
-    asyncio.run(main(parser.parse_args()))
+    run_master()

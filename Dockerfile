@@ -1,4 +1,4 @@
-FROM python:3.10
+FROM python:3.11
 
 WORKDIR /app
 COPY requirements.txt /app
@@ -9,10 +9,5 @@ RUN apt update && apt install telnet httpie vim netcat-traditional -y
 ADD . /app
 
 RUN pip install --no-cache-dir .
-
-# TODO create a separate worker image?
-# TODO add a script to generate  certs ?
-#RUN useradd op && chmod 644 /app/certs/* -R
-#USER op
 
 ENTRYPOINT ["python3"]
