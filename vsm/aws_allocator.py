@@ -48,6 +48,7 @@ class AwsAllocator(JobAllocator):
             overrides={
                 "containerOverrides": [
                     {
+                        "name": "viz_brayns",
                         "environment": [
                             {
                                 # TODO change to S3_FULL_PATH
