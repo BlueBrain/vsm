@@ -50,13 +50,13 @@ class AwsAllocator(JobAllocator):
                     {
                         "environment": [
                             {
-                                # TODO
-                                'name': "S3_FULL_PATH",
+                                # TODO change to S3_FULL_PATH
+                                'name': "S3_BUCKET_NAME",
                                 'value': bucket_path
                             },
                             {
-                                #TODO ->
-                                'name': "S3_ROOT_FOLDER",
+                                #TODO change to S3_BUCKET_NAME
+                                'name': "FUSE_MOUNT_POINT",
                                 'value': root_folder
                             }
                         ]}
