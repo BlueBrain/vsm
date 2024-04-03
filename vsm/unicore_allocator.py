@@ -4,6 +4,7 @@ from typing import Any
 
 from aiohttp import ClientSession
 
+from . import script_list
 from .allocator import AllocationError, JobAllocator, JobDetails, JobNotFound
 from .settings import UNICORE_ENDPOINT
 
@@ -15,8 +16,10 @@ class UnicoreAllocator(JobAllocator):
     async def create_job(self, token: str, payload: dict[str, Any]) -> str:
         url = f"{UNICORE_ENDPOINT}/jobs"
         headers = _get_json_headers(token)
+        usecase = payload["usecase"]
+        usecase_payload = next(e for e in script_list.USE_CASES if e["Name"] == usecase)
 
-        async with self._session.post(url, json=payload, headers=headers) as response:
+        async with self._session.post(url, json=usecase_payload, headers=headers) as response:
             if response.status >= 400:
                 logging.error(response.content)
                 logging.error(f"Unicore returned a {response.status} error")

@@ -11,6 +11,7 @@ from vsm.settings import (
     AWS_SUBNETS,
     AWS_TASK_DEFINITION,
 )
+from . import settings
 
 from .allocator import AllocationError, JobAllocator, JobDetails, JobNotFound
 
@@ -22,6 +23,10 @@ class AwsAllocator(JobAllocator):
         boto3.set_stream_logger(level=logging.INFO)
 
     async def create_job(self, token: str, payload: dict[str, Any]) -> str:
+        project = payload["project"]
+        bucket_path = f"{settings.AWS_BUCKET_NAME}/{project}"
+        root_folder = f"{settings.AWS_BUCKET_MOUNT_PATH}/{project}"
+
         response = self._ecs_client.run_task(
             cluster=AWS_CLUSTER,
             taskDefinition=AWS_TASK_DEFINITION,
@@ -40,6 +45,22 @@ class AwsAllocator(JobAllocator):
                     "base": 0,
                 }
             ],
+            overrides={
+                "containerOverrides": [
+                    {
+                        "environment": [
+                            {
+                                # TODO
+                                'name': "S3_FULL_PATH",
+                                'value': bucket_path
+                            },
+                            {
+                                #TODO ->
+                                'name': "S3_ROOT_FOLDER",
+                                'value': root_folder
+                            }
+                        ]}
+                ]}
         )
 
         logging.debug(f"AWS response {response}")
