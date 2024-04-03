@@ -51,12 +51,10 @@ class AwsAllocator(JobAllocator):
                         "name": "viz_brayns",
                         "environment": [
                             {
-                                # TODO change to S3_FULL_PATH
-                                'name': "S3_BUCKET_NAME",
+                                'name': "S3_BUCKET_PATH",
                                 'value': bucket_path
                             },
                             {
-                                #TODO change to S3_BUCKET_NAME
                                 'name': "FUSE_MOUNT_POINT",
                                 'value': root_folder
                             }
