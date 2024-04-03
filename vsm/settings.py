@@ -31,6 +31,8 @@ AWS_SECURITY_GROUPS = os.getenv("VSM_BRAYNS_TASK_SECURITY_GROUPS", "").split(","
 AWS_SUBNETS = os.getenv("VSM_BRAYNS_TASK_SUBNETS", "").split(",")
 AWS_CLUSTER = os.getenv("VSM_BRAYNS_TASK_CLUSTER", "viz_ecs_cluster")
 AWS_CAPACITY_PROVIDER = os.getenv("VSM_BRAYNS_TASK_CAPACITY_PROVIDER", "viz_ECS_CapacityProvider")
+AWS_BUCKET_NAME = os.getenv("VSM_BUCKET_NAME", "important-scientific-data")
+AWS_BUCKET_MOUNT_PATH = os.getenv("VSM_BUCKET_MOUNT_PATH", "/sbo/data/project")
 
 # Keycloak
 USE_KEYCLOAK = bool(int(os.getenv("VSM_USE_KEYCLOAK", "1")))

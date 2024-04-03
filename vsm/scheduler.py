@@ -31,14 +31,12 @@ class JobScheduler:
             user_id = "SANDBOX_USER"
 
         try:
-            body = await request.json()
-            usecase = body["usecase"]
-            usecase_payload = next(e for e in script_list.USE_CASES if e["Name"] == usecase)
+            payload = await request.json()
         except (KeyError, json.JSONDecodeError, IndexError) as e:
             return web.HTTPBadRequest(body=str(e))
 
         try:
-            job_id = await self._allocator.create_job(token, usecase_payload)
+            job_id = await self._allocator.create_job(token, payload)
         except AllocationError as e:
             logging.error(f"Allocation failed {e}")
             return web.HTTPInternalServerError(body="Job allocation failed")
