@@ -5,7 +5,7 @@ from typing import Any
 
 from aiohttp import web
 
-from . import db, script_list
+from . import db
 from .allocator import AllocationError, JobAllocator, JobDetails, JobNotFound
 from .authenticator import Authenticator
 

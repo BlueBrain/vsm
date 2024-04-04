@@ -4,9 +4,9 @@ import logging
 import ssl
 
 from aiohttp import ClientSession, web
+from aiohttp_middlewares.cors import cors_middleware
 
 from . import logger, settings
-from .utils import setup_cors
 from .websocket_proxy import WebSocketProxy
 
 
@@ -46,7 +46,7 @@ async def main():
     async with ClientSession() as session:
         proxy = WebSocketProxy(session)
 
-        app = web.Application()
+        app = web.Application(middlewares=[cors_middleware(allow_all=True)])
 
         routes = [
             web.get("/healthz", healthcheck),
@@ -55,7 +55,6 @@ async def main():
 
         app.router.add_routes(routes)
 
-        setup_cors(app)
         runner = web.AppRunner(app, access_log=None)
 
         await runner.setup()
@@ -68,7 +67,7 @@ async def main():
 
         try:
             await asyncio.Future()
-        except KeyboardInterrupt:
+        finally:
             await runner.cleanup()
 
 
