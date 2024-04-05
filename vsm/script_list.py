@@ -57,8 +57,5 @@ echo "HOSTNAME=$(hostname -f)"
 
 wait $BACKEND_PID
 """,
-    },
-    {
-        "Name": "AWS_TEST",
-    },
+    }
 ]

@@ -13,17 +13,17 @@ authors = [
     { "name" = "Pawel Podhajski", "email" = "pawel.podhajski@epfl.ch" },
     { "name" = "Adrien Fleury", "email" = "adrien.fleury@epfl.ch" },
 ]
-dependencies = ["aiohttp-cors", "aiohttp", "asyncpg", "boto3"]
+dependencies = ["aiohttp", "aiohttp-middlewares", "asyncpg", "boto3"]
 
 [project.optional-dependencies]
-dev = ["black", "isort", "mypy", "pytest", "ruff"]
+dev = ["mypy", "pytest", "ruff"]
 
 [project.urls]
 "Homepage" = "https://bbpgitlab.epfl.ch/viz/brayns/vsm"
 
 [project.scripts]
 vsm_master = "vsm:run_master"
-vsm_proxy = "vsm:run_master"
+vsm_slave = "vsm:run_slave"
 
 [tool.setuptools.packages.find]
 include = ["vsm*"]
@@ -31,11 +31,9 @@ include = ["vsm*"]
 [tool.setuptools.dynamic]
 version = { attr = "vsm.version.VERSION" }
 
+[tool.mypy]
+disable_error_code = "import-untyped"
+
 [tool.ruff]
 lint.ignore = ["E501"]
-
-[tool.isort]
-profile = "black"
-
-[tool.black]
 line-length = 119

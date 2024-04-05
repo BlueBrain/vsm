@@ -81,7 +81,7 @@ class WebSocketProxy:
                 elif ws_to.closed:
                     logging.error("ws_to is closed")
                     code = cast(int, ws_to.close_code)
-                    await ws_to.close(code=code, message=msg.extra)
+                    await ws_to.close(code=code)
                 elif ws_from.closed:
                     logging.error("ws_from is closed")
                 else:
@@ -91,7 +91,7 @@ class WebSocketProxy:
 
 
 def _verify_headers(request: Request) -> bool:
-    request_headers = request.headers.copy()
+    request_headers = request.headers
     try:
         return (
             request_headers["Connection"].lower() == "keep-alive, upgrade"

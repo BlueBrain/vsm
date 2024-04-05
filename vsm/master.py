@@ -5,6 +5,7 @@ import os
 import ssl
 
 from aiohttp import ClientSession, TCPConnector, web
+from aiohttp_middlewares.cors import cors_middleware
 
 from . import db, logger, settings
 from .allocator import JobAllocator
@@ -12,7 +13,6 @@ from .authenticator import Authenticator
 from .aws_allocator import AwsAllocator
 from .scheduler import JobScheduler
 from .unicore_allocator import UnicoreAllocator
-from .utils import setup_cors
 
 
 def create_allocator(name: str, session: ClientSession) -> JobAllocator:
@@ -71,7 +71,7 @@ async def main():
         allocator = create_allocator(settings.JOB_ALLOCATOR, session)
         scheduler = JobScheduler(allocator, authenticator)
 
-        app = web.Application()
+        app = web.Application(middlewares=[cors_middleware(allow_all=True)])
 
         routes = [
             web.get("/healthz", healthcheck),
@@ -81,7 +81,6 @@ async def main():
         ]
 
         app.router.add_routes(routes)
-        setup_cors(app)
 
         runner = web.AppRunner(app, access_log=None)
 
@@ -95,7 +94,7 @@ async def main():
 
         try:
             await asyncio.Future()
-        except KeyboardInterrupt:
+        finally:
             await runner.cleanup()
 
 
