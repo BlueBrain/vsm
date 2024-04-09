@@ -11,8 +11,8 @@ from vsm.settings import (
     AWS_SUBNETS,
     AWS_TASK_DEFINITION,
 )
-from . import settings
 
+from . import settings
 from .allocator import AllocationError, JobAllocator, JobDetails, JobNotFound
 
 
@@ -23,9 +23,15 @@ class AwsAllocator(JobAllocator):
         boto3.set_stream_logger(level=logging.INFO)
 
     async def create_job(self, token: str, payload: dict[str, Any]) -> str:
-        project = payload["project"]
+        try:
+            project = payload["project"]
+        except KeyError:
+            raise AllocationError("Missing user project")
+
         bucket_path = f"{settings.AWS_BUCKET_NAME}/{project}"
         root_folder = f"{settings.AWS_BUCKET_MOUNT_PATH}/{project}"
+
+        logging.info(f"Starting new ECS task, mount {bucket_path} at {root_folder}")
 
         response = self._ecs_client.run_task(
             cluster=AWS_CLUSTER,
@@ -50,19 +56,15 @@ class AwsAllocator(JobAllocator):
                     {
                         "name": "viz_brayns",
                         "environment": [
-                            {
-                                'name': "S3_BUCKET_PATH",
-                                'value': bucket_path
-                            },
-                            {
-                                'name': "FUSE_MOUNT_POINT",
-                                'value': root_folder
-                            }
-                        ]}
-                ]}
+                            {"name": "S3_BUCKET_PATH", "value": bucket_path},
+                            {"name": "FUSE_MOUNT_POINT", "value": root_folder},
+                        ],
+                    }
+                ]
+            },
         )
 
-        logging.debug(f"AWS response {response}")
+        logging.info(f"AWS start response {response}")
 
         try:
             task_arn = response["tasks"][0]["taskArn"]
@@ -79,19 +81,21 @@ class AwsAllocator(JobAllocator):
 
         return task_id
 
-    async def destroy_job(self, token: str, job_id: str) -> None:
+    async def destroy_job(self, job_id: str) -> None:
         try:
             response = self._ecs_client.stop_task(cluster=AWS_CLUSTER, task=job_id)
         except Exception as e:
             raise JobNotFound(str(e))
 
-        logging.debug(f"AWS stop response {response}")
+        logging.info(f"AWS stop response {response}")
 
     async def get_job_details(self, token: str, job_id: str) -> JobDetails:
         try:
             response = self._ecs_client.describe_tasks(cluster=AWS_CLUSTER, tasks=[job_id])
         except Exception as e:
             raise JobNotFound(str(e))
+
+        logging.info(f"AWS describe tasks response {response}")
 
         try:
             host_ip = response["tasks"][0]["containers"][0]["networkInterfaces"][0]["privateIpv4Address"]

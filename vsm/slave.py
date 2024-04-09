@@ -46,7 +46,10 @@ async def main():
     async with ClientSession() as session:
         proxy = WebSocketProxy(session)
 
-        app = web.Application(middlewares=[cors_middleware(allow_all=True)])
+        app = web.Application(
+            logger=logging.root,
+            middlewares=[cors_middleware(allow_all=True)],
+        )
 
         routes = [
             web.get("/healthz", healthcheck),
