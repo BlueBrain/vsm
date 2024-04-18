@@ -1,4 +1,5 @@
 import logging
+import sys
 
 from . import settings
 
@@ -9,6 +10,6 @@ def configure() -> None:
     formatter = logging.Formatter(
         "%(asctime)s - [%(levelname)s] - %(name)s - %(filename)s.%(funcName)s(%(lineno)d) - %(message)s",
     )
-    ch = logging.StreamHandler()
+    ch = logging.StreamHandler(sys.stdout)
     ch.setFormatter(formatter)
     logger.addHandler(ch)

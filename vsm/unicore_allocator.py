@@ -33,7 +33,7 @@ class UnicoreAllocator(JobAllocator):
 
             return location.split("/").pop()
 
-    async def destroy_job(self, token: str, job_id: str) -> None:
+    async def destroy_job(self, job_id: str) -> None:
         raise NotImplementedError("Not available for unicore")
 
     async def get_job_details(self, token: str, job_id: str) -> JobDetails:

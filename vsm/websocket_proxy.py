@@ -5,9 +5,8 @@ from typing import cast
 from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, web
 from aiohttp.web_request import Request
 
+from vsm.db import DbError, connect_to_db
 from vsm.settings import BCSB_PORT, BRAYNS_PORT
-
-from . import db
 
 WebSocketLike = ClientWebSocketResponse | web.WebSocketResponse
 
@@ -17,8 +16,10 @@ class WebSocketProxy:
         self._session = session
 
     async def ws_handler(self, request: Request):
+        logging.info(f"New websocket connection from {request.host}")
+
         if not _verify_headers(request):
-            return web.HTTPBadRequest(reason="Headers not verified")
+            return web.HTTPBadRequest(reason="Bad websocket headers")
 
         try:
             job_id = request.match_info["job_id"]
@@ -33,37 +34,35 @@ class WebSocketProxy:
             return web.HTTPInternalServerError()
 
         try:
-            async with await db.connect() as connection:
+            async with await connect_to_db() as connection:
                 job = await connection.get_job(job_id)
-        except db.DbError as e:
-            logging.warning(e)
+        except DbError as e:
             return web.HTTPNotFound(body=str(e))
 
         if not job.host:
-            logging.warning(f"No host found for job {job_id}")
             return web.HTTPNotFound(body=f"No host found for job {job_id}")
 
         hostname = job.host + (f":{BRAYNS_PORT}" if service == "renderer" else f":{BCSB_PORT}")
 
+        logging.info(f"Brayns hostname: {hostname}")
+
         ws_client = web.WebSocketResponse(max_msg_size=2 * 1024 * 1024 * 1024)
+
         try:
             await ws_client.prepare(request)
 
             async with self._session.ws_connect(f"ws://{hostname}", max_msg_size=2 * 1024 * 1024 * 1024) as ws_brayns:
+                logging.info("Websocket session started")
                 try:
-                    logging.info(
-                        f"Hurray, a new client with ip {request.headers.get('X-FORWARDED-FOR', request.remote)}"
-                    )
                     task1 = asyncio.create_task(self.wsforward(ws_brayns, ws_client))
                     task2 = asyncio.create_task(self.wsforward(ws_client, ws_brayns))
                     await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
                 except Exception as e:
-                    await ws_brayns.close()
                     raise Exception(f"Client or server exception in WS processing: {str(e)}")
         except Exception as e:
             logging.error(f"Error on establishing WS: {str(e)}")
         finally:
-            logging.info(f"Client with ip: {request.headers.get('X-FORWARDED-FOR', request.remote)} has left the game")
+            logging.info(f"Client with ip {request.host} disconnected")
 
         return ws_client
 
@@ -87,7 +86,7 @@ class WebSocketProxy:
                 else:
                     raise ValueError(f"unexpected message type: {mt}")
         except Exception as e:
-            logging.error(f"ws forward exception, {str(e)}")
+            logging.error(f"WS forward exception, {str(e)}")
 
 
 def _verify_headers(request: Request) -> bool:

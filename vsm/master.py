@@ -3,14 +3,16 @@ import asyncio
 import logging
 import os
 import ssl
+from contextlib import suppress
 
 from aiohttp import ClientSession, TCPConnector, web
 from aiohttp_middlewares.cors import cors_middleware
 
-from . import db, logger, settings
+from . import logger, settings
 from .allocator import JobAllocator
 from .authenticator import Authenticator
 from .aws_allocator import AwsAllocator
+from .db import connect_to_db
 from .scheduler import JobScheduler
 from .unicore_allocator import UnicoreAllocator
 
@@ -61,7 +63,7 @@ async def main():
     if ca_exists:
         logging.info(f"Using CA file: {settings.UNICORE_CA_FILE}")
 
-    async with await db.connect() as connection:
+    async with await connect_to_db() as connection:
         await connection.create_table_if_not_exists()
 
     connector = TCPConnector(ssl=ssl.create_default_context(cafile=settings.UNICORE_CA_FILE if ca_exists else None))
@@ -71,7 +73,12 @@ async def main():
         allocator = create_allocator(settings.JOB_ALLOCATOR, session)
         scheduler = JobScheduler(allocator, authenticator)
 
-        app = web.Application(middlewares=[cors_middleware(allow_all=True)])
+        cleanup_task = asyncio.create_task(scheduler.cleanup_expired_jobs())
+
+        app = web.Application(
+            logger=logging.root,
+            middlewares=[cors_middleware(allow_all=True)],
+        )
 
         routes = [
             web.get("/healthz", healthcheck),
@@ -95,6 +102,9 @@ async def main():
         try:
             await asyncio.Future()
         finally:
+            cleanup_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await cleanup_task
             await runner.cleanup()
 
 
