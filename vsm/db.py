@@ -55,7 +55,7 @@ class PsqlConnection(DbConnection):
             CREATE TABLE IF NOT EXISTS jobs (
                 job_id VARCHAR(255) PRIMARY KEY,
                 user_id VARCHAR(255) NOT NULL,
-                start_time VARCHAR(255) NOT NULL
+                start_time VARCHAR(255) NOT NULL,
                 hostname VARCHAR(255) NOT NULL
             )
         """
