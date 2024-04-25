@@ -28,7 +28,7 @@ class AwsAllocator(JobAllocator):
         except KeyError:
             raise AllocationError("Missing user project")
 
-        bucket_path = f"{settings.AWS_BUCKET_NAME}/{project}"
+        bucket_path = f"{settings.AWS_BUCKET_NAME}:/{project}"
         root_folder = f"{settings.AWS_BUCKET_MOUNT_PATH}/{project}"
 
         logging.info(f"Starting new ECS task, mount {bucket_path} at {root_folder}")
