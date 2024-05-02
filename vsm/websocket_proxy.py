@@ -1,102 +1,92 @@
 import asyncio
-import logging
-from typing import cast
+from logging import Logger
 
 from aiohttp import ClientSession, ClientWebSocketResponse, WSMsgType, web
 from aiohttp.web_request import Request
 
-from vsm.db import DbError, connect_to_db
-from vsm.settings import BCSB_PORT, BRAYNS_PORT
+from .db import DbConnector
+from .settings import BRAYNS_PORT
+
+MAX_MESSAGE_SIZE = 2 * 1024 * 1024 * 1024
 
 WebSocketLike = ClientWebSocketResponse | web.WebSocketResponse
 
 
 class WebSocketProxy:
-    def __init__(self, session: ClientSession) -> None:
+    def __init__(self, session: ClientSession, connector: DbConnector, logger: Logger) -> None:
         self._session = session
+        self._connector = connector
+        self._logger = logger
 
     async def ws_handler(self, request: Request):
-        logging.info(f"New websocket connection from {request.host}")
+        self._logger.info(f"New websocket connection from {request.host}")
 
-        if not _verify_headers(request):
-            return web.HTTPBadRequest(reason="Bad websocket headers")
+        job_id = request.match_info.get("job_id")
 
-        try:
-            job_id = request.match_info["job_id"]
-            service = request.match_info.get("service")
-        except KeyError as e:
-            return web.HTTPBadRequest(body=str(e))
-        except ValueError as e:
-            return web.HTTPNotFound(body=str(e))
-        except PermissionError as e:
-            return web.HTTPUnauthorized(body=str(e))
-        except Exception:
-            return web.HTTPInternalServerError()
+        if job_id is None:
+            self._logger.error(f"No job ID in path: {request.path}")
+            raise web.HTTPBadRequest(text="No job ID in path")
 
         try:
-            async with await connect_to_db() as connection:
+            async with await self._connector.connect() as connection:
                 job = await connection.get_job(job_id)
-        except DbError as e:
-            return web.HTTPNotFound(body=str(e))
+        except Exception as e:
+            self._logger.error(f"DB error while getting job details: {e}")
+            return web.HTTPInternalServerError(text="Internal DB error (cannot retreive job)")
+
+        if job is None:
+            self._logger.error(f"Invalid job ID from user: {job_id}")
+            raise web.HTTPNotFound(text=f"No jobs found with ID {job_id}")
 
         if not job.host:
-            return web.HTTPNotFound(body=f"No host found for job {job_id}")
+            self._logger.error(f"No host found for job {job_id}")
+            return web.HTTPBadRequest(text="Job not ready")
 
-        hostname = job.host + (f":{BRAYNS_PORT}" if service == "renderer" else f":{BCSB_PORT}")
+        hostname = f"{job.host}:{BRAYNS_PORT}"
 
-        logging.info(f"Brayns hostname: {hostname}")
+        self._logger.info(f"Brayns hostname: {hostname}")
 
-        ws_client = web.WebSocketResponse(max_msg_size=2 * 1024 * 1024 * 1024)
+        ws_client = web.WebSocketResponse(max_msg_size=MAX_MESSAGE_SIZE)
+
+        await ws_client.prepare(request)
 
         try:
-            await ws_client.prepare(request)
-
-            async with self._session.ws_connect(f"ws://{hostname}", max_msg_size=2 * 1024 * 1024 * 1024) as ws_brayns:
-                logging.info("Websocket session started")
-                try:
-                    task1 = asyncio.create_task(self.wsforward(ws_brayns, ws_client))
-                    task2 = asyncio.create_task(self.wsforward(ws_client, ws_brayns))
-                    await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
-                except Exception as e:
-                    raise Exception(f"Client or server exception in WS processing: {str(e)}")
+            async with self._session.ws_connect(f"ws://{hostname}", max_msg_size=MAX_MESSAGE_SIZE) as ws_brayns:
+                self._logger.info("Websocket session started")
+                task1 = asyncio.create_task(self.wsforward("brayns", ws_brayns, ws_client))
+                task2 = asyncio.create_task(self.wsforward("client", ws_client, ws_brayns))
+                await asyncio.wait([task1, task2], return_when=asyncio.FIRST_COMPLETED)
         except Exception as e:
-            logging.error(f"Error on establishing WS: {str(e)}")
-        finally:
-            logging.info(f"Client with ip {request.host} disconnected")
+            self._logger.error(f"WS forward error: {e}")
+            raise web.HTTPInternalServerError(text="WS proxy error")
+
+        self._logger.info(f"Client with ip {request.host} disconnected")
 
         return ws_client
 
-    async def wsforward(self, ws_from: WebSocketLike, ws_to: WebSocketLike) -> None:
-        try:
-            async for msg in ws_from:
-                mt = msg.type
-                md = msg.data
-                if mt == WSMsgType.TEXT:
-                    await ws_to.send_str(md)
-                elif mt == WSMsgType.BINARY:
-                    await ws_to.send_bytes(md)
-                elif mt == WSMsgType.CLOSED:
-                    logging.error("WSMsgType is closed")
-                elif ws_to.closed:
-                    logging.error("ws_to is closed")
-                    code = cast(int, ws_to.close_code)
-                    await ws_to.close(code=code)
-                elif ws_from.closed:
-                    logging.error("ws_from is closed")
-                else:
-                    raise ValueError(f"unexpected message type: {mt}")
-        except Exception as e:
-            logging.error(f"WS forward exception, {str(e)}")
+    async def wsforward(self, source: str, ws_from: WebSocketLike, ws_to: WebSocketLike) -> None:
+        async for message in ws_from:
+            message_type = message.type
 
+            self._logger.info(f"WS message received from {source} {message_type=}")
 
-def _verify_headers(request: Request) -> bool:
-    request_headers = request.headers
-    try:
-        return (
-            request_headers["Connection"].lower() == "keep-alive, upgrade"
-            or request_headers["Connection"].lower() == "upgrade"
-            and request_headers["Upgrade"].lower() == "websocket"
-            and request.method == "GET"
-        )
-    except Exception:
-        return False
+            if message_type == WSMsgType.TEXT:
+                await ws_to.send_str(message.data)
+                continue
+
+            if message_type == WSMsgType.BINARY:
+                await ws_to.send_bytes(message.data)
+                continue
+
+            if message_type == WSMsgType.PING:
+                await ws_to.ping()
+                continue
+
+            if message_type == WSMsgType.PONG:
+                await ws_to.pong()
+                continue
+
+            self._logger.error(f"Invalid WS message type {message_type}")
+            raise ValueError("Invalid websocket message type")
+
+        await ws_to.close()
