@@ -1,143 +1,125 @@
 import asyncio
 import json
-import logging
 from datetime import datetime, timedelta
-from typing import Any
+from logging import Logger
 
 from aiohttp import web
 
-from .allocator import AllocationError, JobAllocator, JobDetails, JobNotFound
+from .allocator import JobAllocator, JobDetails
 from .authenticator import Authenticator
-from .db import DbError, Job, connect_to_db
+from .db import DbConnector, Job
+from .settings import JOB_CLEANUP_PERIOD_SECONDS, JOB_DURATION_SECONDS
 
-CLEANUP_PERIOD = timedelta(seconds=10)
-MAX_TASK_DURATION = timedelta(hours=8)
+CLEANUP_PERIOD = timedelta(seconds=JOB_CLEANUP_PERIOD_SECONDS)
+JOB_DURATION = timedelta(seconds=JOB_DURATION_SECONDS)
 
 
 class JobScheduler:
-    def __init__(self, allocator: JobAllocator, authenticator: Authenticator):
+    def __init__(
+        self,
+        allocator: JobAllocator,
+        authenticator: Authenticator,
+        connector: DbConnector,
+        logger: Logger,
+    ) -> None:
         self._allocator = allocator
         self._authenticator = authenticator
+        self._connector = connector
+        self._logger = logger
 
     async def start(self, request: web.Request) -> web.Response:
-        logging.info("New start request.")
+        self._logger.info("Start request received.")
 
-        try:
-            token = request.headers["Authorization"]
-            user_id = await self._authenticator.get_username(token)
-        except KeyError:
-            return web.HTTPUnauthorized(body="No authorization header")
-        except PermissionError as e:
-            return web.HTTPUnauthorized(body=str(e))
+        token = self._authenticator.get_token(request)
+        user_id = await self._authenticator.get_username(token)
 
         if user_id is None:
-            logging.info("Using sandbox user")
+            self._logger.warn("Using sandbox user for DB")
             user_id = "SANDBOX_USER"
+
+        self._logger.info("Extracting JSON body")
 
         try:
             payload = await request.json()
-        except (KeyError, json.JSONDecodeError, IndexError) as e:
-            return web.HTTPBadRequest(body=str(e))
+        except json.JSONDecodeError as e:
+            self._logger.error(f"Invalid JSON in user request body {e=}")
+            raise web.HTTPBadRequest(text=f"Invalid JSON body: {e}")
 
-        logging.info(f"Request body {payload}")
+        self._logger.debug(f"Request body {payload}")
 
-        try:
-            job_id = await self._allocator.create_job(token, payload)
-        except AllocationError as e:
-            logging.error(f"Allocation failed {e}")
-            return web.HTTPInternalServerError(body="Job allocation failed")
-
-        logging.info(f"User {user_id} has created a job: {job_id}")
+        job_id = await self._allocator.create_job(token, payload)
 
         start_time = datetime.now()
-        job = Job(job_id, user_id, start_time)
+        end_time = start_time + JOB_DURATION
 
-        async with await connect_to_db() as connection:
-            await connection.insert_job(job)
+        job = Job(job_id, user_id, start_time, end_time)
 
-        logging.info("Job saved to DB")
+        self._logger.debug(f"Job details: {job}")
 
-        return web.HTTPCreated(body=json.dumps({"job_id": job_id}))
+        self._logger.info("Saving new job to DB")
+
+        try:
+            async with await self._connector.connect() as connection:
+                await connection.insert_job(job)
+        except Exception as e:
+            self._logger.critical(f"Failed to save job to DB: {e}")
+            raise web.HTTPInternalServerError(text="Internal DB error (job is started but not registered)")
+
+        self._logger.info("Job saved to DB")
+
+        return web.HTTPCreated(text=json.dumps({"job_id": job_id}))
 
     async def stop(self, request: web.Request) -> web.Response:
-        logging.info("New stop request.")
+        self._logger.info("Stop request received.")
 
-        try:
-            token = request.headers["Authorization"]
-            user_id = await self._authenticator.get_username(token)
-        except PermissionError as e:
-            return web.HTTPUnauthorized(body=str(e))
-        except KeyError:
-            return web.HTTPBadRequest(body="No authorization header")
+        token = self._authenticator.get_token(request)
+        user_id = await self._authenticator.get_username(token)
 
-        try:
-            job_id = request.match_info["job_id"]
-        except KeyError:
-            return web.HTTPBadRequest(body="No job_id provided")
+        job_id = self._get_job_id_from_path(request)
 
-        logging.info(f"Job ID to stop {job_id}")
+        self._logger.info(f"Job ID to stop {job_id}")
 
-        try:
-            await _check_user_owns_job(job_id, user_id)
-        except DbError as e:
-            logging.error(f"DB error to check user owns job {e}")
-            return web.HTTPNotFound(body=str(e))
-        except PermissionError as e:
-            return web.HTTPForbidden(body=str(e))
+        job = await self._get_job_from_db(job_id)
 
-        try:
-            await self._kill_job(job_id)
-        except JobNotFound as e:
-            return web.HTTPBadRequest(body=str(e))
-        except Exception as e:
-            return web.HTTPInternalServerError(body=str(e))
+        await self._check_user_owns_job(job, user_id)
+
+        await self._kill_job(job_id)
 
         return web.HTTPOk()
 
     async def get_status(self, request: web.Request) -> web.Response:
-        logging.info("New status request.")
+        self._logger.info("Status request received.")
 
-        try:
-            token = request.headers["Authorization"]
-            user_id = await self._authenticator.get_username(token)
-        except PermissionError as e:
-            return web.HTTPUnauthorized(body=str(e))
-        except KeyError:
-            return web.HTTPBadRequest(body="No authorization header")
+        token = self._authenticator.get_token(request)
+        user_id = await self._authenticator.get_username(token)
 
-        try:
-            job_id = request.match_info["job_id"]
-        except KeyError:
-            return web.HTTPBadRequest(body="No job_id provided")
+        job_id = self._get_job_id_from_path(request)
 
-        logging.info(f"Job ID to get status {job_id}")
+        self._logger.info(f"Job ID to get status {job_id}")
 
-        try:
-            await _check_user_owns_job(job_id, user_id)
-        except DbError as e:
-            logging.error(f"DB error to check user owns job {e}")
-            return web.HTTPNotFound(body=str(e))
-        except PermissionError as e:
-            return web.HTTPForbidden(body=str(e))
+        job = await self._get_job_from_db(job_id)
 
-        try:
-            details = await self._allocator.get_job_details(token, job_id)
-        except JobNotFound as e:
-            logging.error(e)
-            return web.HTTPBadRequest(body=str(e))
-        except Exception as e:
-            logging.error(e)
-            return web.HTTPInternalServerError()
+        await self._check_user_owns_job(job, user_id)
 
-        logging.info(f"Job details from allocator {details}")
+        details = await self._allocator.get_job_details(token, job_id)
+
+        if details.end_time is None:
+            self._logger.info("Using endtime from DB as allocator did not provide it")
+            details.end_time = job.end_time
+
+        self._logger.info(f"Job details: {details}")
 
         if details.host is None:
             return _reply(details)
 
-        async with await connect_to_db() as connection:
-            await connection.update_job(job_id, details.host)
+        try:
+            async with await self._connector.connect() as connection:
+                await connection.update_job(job_id, details.host)
+        except Exception as e:
+            self._logger.critical(f"DB error while updating jobs: {e}")
+            raise web.HTTPInternalServerError(text="Internal DB error (job host is not updated)")
 
-        logging.info("Updated job host in DB")
+        self._logger.info("Updated job host in DB")
 
         return _reply(details)
 
@@ -145,43 +127,78 @@ class JobScheduler:
         while True:
             await asyncio.sleep(CLEANUP_PERIOD.total_seconds())
 
-            async with await connect_to_db() as connection:
-                jobs = await connection.get_jobs()
+            try:
+                async with await self._connector.connect() as connection:
+                    jobs = await connection.get_jobs()
+            except Exception as e:
+                self._logger.critical(f"DB error while cleaning jobs: {e}")
 
             now = datetime.now()
+
             for job in jobs:
-                if now - job.start_time >= MAX_TASK_DURATION:
+                if now < job.end_time:
+                    continue
+
+                try:
                     await self._kill_job(job.id)
+                except Exception as e:
+                    self._logger.critical(f"Failed to cleanup job {job.id}: {e}")
 
     async def _kill_job(self, job_id: str) -> None:
-        logging.info(f"Stopping job {job_id}")
+        self._logger.info(f"Stopping job {job_id}")
 
         await self._allocator.destroy_job(job_id)
 
-        logging.info(f"Removing job {job_id} from DB")
+        self._logger.info(f"Removing job {job_id} from DB")
 
-        async with await connect_to_db() as connection:
-            await connection.delete_job(job_id)
+        try:
+            async with await self._connector.connect() as connection:
+                await connection.delete_job(job_id)
+        except Exception as e:
+            self._logger.critical(f"Failed to delete job {job_id} from DB: {e}")
+            raise web.HTTPInternalServerError(text="Internal DB error (but job is stopped)")
 
+    async def _get_job_from_db(self, job_id: str) -> Job:
+        try:
+            async with await self._connector.connect() as connection:
+                job = await connection.get_job(job_id)
+        except Exception as e:
+            self._logger.error(f"DB error while getting job: {e}")
+            raise web.HTTPInternalServerError(text="Internal DB error (cannot retreive job)")
 
-async def _check_user_owns_job(job_id: str, user_id: str | None) -> None:
-    if user_id is None:
-        return
-    async with await connect_to_db() as connection:
-        job = await connection.get_job(job_id)
+        if job is None:
+            self._logger.error(f"Job not found for ID {job_id}")
+            raise web.HTTPNotFound(text=f"Invalid job ID {job_id}")
+
+        return job
+
+    async def _check_user_owns_job(self, job: Job, user_id: str | None) -> None:
+        self._logger.info(f"Checking that user {user_id} owns job {job.id}")
+
+        if user_id is None:
+            return
+
         if job.user != user_id:
-            logging.warning(f"Job creator {job.user} doesn't match keycloak username {user_id}")
-            raise PermissionError(f"{job.user} is not the owner of the job {job_id}")
+            self._logger.error(f"User {user_id} cannot delete job from user {job.user}")
+            raise web.HTTPUnauthorized(text="Cannot delete the jobs from another user")
 
+    def _get_job_id_from_path(self, request: web.Request) -> str:
+        self._logger.info("Getting job ID from request path")
 
-def _serialize_details(details: JobDetails) -> dict[str, Any]:
-    return {
-        "job_running": details.job_running,
-        "end_time": details.end_time,
-        "brayns_started": details.host is not None,
-    }
+        job_id = request.match_info.get("job_id")
+
+        if job_id is None:
+            self._logger.error("No job ID provided by user")
+            raise web.HTTPBadRequest(text="No job_id provided in path")
+
+        return job_id
 
 
 def _reply(details: JobDetails) -> web.Response:
-    message = _serialize_details(details)
-    return web.HTTPOk(body=json.dumps(message))
+    assert details.end_time is not None
+    message = {
+        "job_running": details.job_running,
+        "end_time": details.end_time.isoformat(),
+        "brayns_started": details.host is not None,
+    }
+    return web.HTTPOk(text=json.dumps(message))

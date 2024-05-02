@@ -1,17 +1,21 @@
 import logging
 import re
+from datetime import datetime
 from typing import Any
 
 from aiohttp import ClientSession
 
 from . import script_list
-from .allocator import AllocationError, JobAllocator, JobDetails, JobNotFound
+from .allocator import JobAllocator, JobDetails
 from .settings import UNICORE_ENDPOINT
 
 
 class UnicoreAllocator(JobAllocator):
     def __init__(self, session: ClientSession) -> None:
         self._session = session
+
+    async def close(self) -> None:
+        pass
 
     async def create_job(self, token: str, payload: dict[str, Any]) -> str:
         url = f"{UNICORE_ENDPOINT}/jobs"
@@ -23,13 +27,13 @@ class UnicoreAllocator(JobAllocator):
             if response.status >= 400:
                 logging.error(response.content)
                 logging.error(f"Unicore returned a {response.status} error")
-                raise AllocationError("Request to Unicore failed")
+                raise ValueError("Request to Unicore failed")
 
             location = response.headers.get("Location")
 
             if location is None:
                 logging.error("Unicore response is missing 'Location' header")
-                raise AllocationError("Invalid Unicore response")
+                raise ValueError("Invalid Unicore response")
 
             return location.split("/").pop()
 
@@ -45,7 +49,7 @@ class UnicoreAllocator(JobAllocator):
                 data = await response.json()
         except Exception as e:
             logging.error(f"Unicore status check failed: {e}")
-            raise JobNotFound(job_id)
+            raise ValueError(job_id)
 
         job_state = data.get("JobState")
         if job_state is None:
@@ -56,7 +60,10 @@ class UnicoreAllocator(JobAllocator):
         if not running:
             return JobDetails()
 
-        end_time = data["EndTime"]
+        end_time = data.get("EndTime")
+
+        if end_time is not None:
+            end_time = datetime.fromisoformat(end_time)
 
         try:
             content = await self._get_stdout(token, job_id)
@@ -75,7 +82,7 @@ class UnicoreAllocator(JobAllocator):
 
         async with self._session.get(url, headers=headers) as response:
             if response.status == 404:
-                raise JobNotFound(job_id)
+                raise ValueError(job_id)
             return await response.read()
 
 

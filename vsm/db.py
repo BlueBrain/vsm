@@ -12,10 +12,8 @@ class Job:
     id: str
     user: str
     start_time: datetime
+    end_time: datetime
     host: str = ""
-
-
-class DbError(Exception): ...
 
 
 class DbConnection(Protocol):
@@ -27,11 +25,11 @@ class DbConnection(Protocol):
 
     async def close(self) -> None: ...
 
-    async def create_table_if_not_exists(self) -> None: ...
+    async def recreate_table(self) -> None: ...
 
     async def get_jobs(self) -> list[Job]: ...
 
-    async def get_job(self, id: str) -> Job: ...
+    async def get_job(self, id: str) -> Job | None: ...
 
     async def insert_job(self, job: Job) -> None: ...
 
@@ -40,95 +38,123 @@ class DbConnection(Protocol):
     async def delete_job(self, id: str) -> None: ...
 
 
+class DbConnector(Protocol):
+    async def connect(self) -> DbConnection: ...
+
+
+TABLE = "jobs"
+
+
+@dataclass
+class Column:
+    name: str
+    type: str = "VARCHAR(255)"
+    primary: bool = False
+
+
+JOB_ID = "job_id"
+HOSTNAME = "hostname"
+
+COLUMNS = [
+    Column(JOB_ID, primary=True),
+    Column("user_id"),
+    Column("start_time"),
+    Column("end_time"),
+    Column(HOSTNAME),
+]
+
+
+def declare_column(column: Column) -> str:
+    suffix = "PRIMARY KEY" if column.primary else "NOT NULL"
+    return f"{column.name} {column.type} {suffix}"
+
+
+def get_all_columns(columns: list[Column]) -> str:
+    return ", ".join(column.name for column in columns)
+
+
+def parse_job(row: dict[str, str]) -> Job:
+    return Job(
+        id=row[JOB_ID],
+        user=row["user_id"],
+        start_time=datetime.fromisoformat(row["start_time"]),
+        end_time=datetime.fromisoformat(row["end_time"]),
+        host=row[HOSTNAME],
+    )
+
+
+def compose_job(job: Job) -> list[str]:
+    return [
+        job.id,
+        job.user,
+        job.start_time.isoformat(),
+        job.end_time.isoformat(),
+        job.host,
+    ]
+
+
 class PsqlConnection(DbConnection):
     def __init__(self, connection: asyncpg.Connection) -> None:
         self._connection = connection
 
     async def close(self) -> None:
-        try:
-            await self._connection.close()
-        except asyncpg.PostgresError as e:
-            raise DbError(str(e))
+        await self._connection.close()
 
-    async def create_table_if_not_exists(self) -> None:
-        query = """
-            CREATE TABLE IF NOT EXISTS jobs (
-                job_id VARCHAR(255) PRIMARY KEY,
-                user_id VARCHAR(255) NOT NULL,
-                start_time VARCHAR(255) NOT NULL,
-                hostname VARCHAR(255) NOT NULL
-            )
-        """
-        try:
-            await self._connection.execute(query)
-        except asyncpg.PostgresError as e:
-            raise DbError(str(e))
+    async def recreate_table(self) -> None:
+        await self._connection.execute(f"DROP TABLE IF EXISTS {TABLE}")
+        columns = ",\n".join(declare_column(column) for column in COLUMNS)
+        await self._connection.execute(f"CREATE TABLE {TABLE} (\n{columns}\n)")
 
     async def get_jobs(self) -> list[Job]:
-        query = """
-            SELECT job_id, user_id, start_time, hostname FROM jobs
-        """
-        try:
-            rows = await self._connection.fetch(query)
-        except asyncpg.PostgresError as e:
-            raise DbError(str(e))
-        return [_get_job(row) for row in rows]
+        columns = get_all_columns(COLUMNS)
+        rows = await self._connection.fetch(f"SELECT {columns} FROM {TABLE}")
+        return [parse_job(row) for row in rows]
 
-    async def get_job(self, id: str) -> Job:
-        query = """
-            SELECT job_id, user_id, start_time, hostname FROM jobs WHERE job_id = $1
-        """
-        try:
-            row = await self._connection.fetchrow(query, id)
-        except asyncpg.PostgresError as e:
-            raise DbError(str(e))
+    async def get_job(self, id: str) -> Job | None:
+        columns = get_all_columns(COLUMNS)
+        query = f"SELECT {columns} FROM {TABLE} WHERE {JOB_ID} = $1"
+        row = await self._connection.fetchrow(query, id)
         if row is None:
-            raise DbError(f"No jobs found with ID {id}")
-        return _get_job(row)
+            return None
+        return parse_job(row)
 
     async def insert_job(self, job: Job) -> None:
-        query = """
-            INSERT INTO jobs(job_id, user_id, start_time, hostname) VALUES($1, $2, $3, $4)
-        """
-        start_time = job.start_time.isoformat()
-        try:
-            await self._connection.execute(query, job.id, job.user, start_time, job.host)
-        except asyncpg.PostgresError as e:
-            raise DbError(str(e))
+        columns = get_all_columns(COLUMNS)
+        values = compose_job(job)
+        placeholders = ", ".join(f"${i + 1}" for i in range(len(COLUMNS)))
+        query = f"INSERT INTO {TABLE}({columns}) VALUES({placeholders})"
+        await self._connection.execute(query, *values)
 
     async def update_job(self, id: str, host: str) -> None:
-        query = """
-            UPDATE jobs SET hostname = $1 WHERE job_id = $2
-        """
-        try:
-            await self._connection.execute(query, host, id)
-        except asyncpg.PostgresError as e:
-            raise DbError(str(e))
+        query = f"UPDATE {TABLE} SET {HOSTNAME} = $1 WHERE {JOB_ID} = $2"
+        await self._connection.execute(query, host, id)
 
     async def delete_job(self, id: str) -> None:
-        query = """
-            DELETE FROM jobs WHERE job_id = $1
-        """
-        try:
-            await self._connection.execute(query, id)
-        except asyncpg.PostgresError as e:
-            raise DbError(str(e))
+        query = f"DELETE FROM {TABLE} WHERE {JOB_ID} = $1"
+        await self._connection.execute(query, id)
 
 
-async def connect_to_db() -> DbConnection:
-    connection = await asyncpg.connect(
+@dataclass
+class PsqlConnector(DbConnector):
+    host: str
+    database: str
+    user: str
+    password: str
+
+    async def connect(self) -> DbConnection:
+        connection = await asyncpg.connect(
+            host=self.host,
+            database=self.database,
+            user=self.user,
+            password=self.password,
+        )
+        return PsqlConnection(connection)
+
+
+def create_db_connector() -> DbConnector:
+    return PsqlConnector(
         host=DB_HOST,
         database=DB_NAME,
         user=DB_USERNAME,
         password=DB_PASSWORD,
-    )
-    return PsqlConnection(connection)
-
-
-def _get_job(row: dict[str, str]) -> Job:
-    return Job(
-        id=row["job_id"],
-        user=row["user_id"],
-        start_time=datetime.fromisoformat(row["start_time"]),
-        host=row["hostname"],
     )

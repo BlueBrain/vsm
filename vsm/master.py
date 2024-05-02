@@ -1,116 +1,76 @@
-import argparse
 import asyncio
-import logging
 import os
 import ssl
 from contextlib import suppress
+from logging import Logger
 
 from aiohttp import ClientSession, TCPConnector, web
-from aiohttp_middlewares.cors import cors_middleware
 
-from . import logger, settings
-from .allocator import JobAllocator
+from .allocator import FakeAllocator, JobAllocator
+from .application import run_application
 from .authenticator import Authenticator
 from .aws_allocator import AwsAllocator
-from .db import connect_to_db
+from .db import create_db_connector
+from .logger import create_logger
 from .scheduler import JobScheduler
+from .settings import JOB_ALLOCATOR, MASTER_PORT, RECREATE_DB, UNICORE_CA_FILE
 from .unicore_allocator import UnicoreAllocator
 
 
-def create_allocator(name: str, session: ClientSession) -> JobAllocator:
+def create_allocator(name: str, session: ClientSession, logger: Logger) -> JobAllocator:
     if name == "UNICORE":
+        logger.warn("Unicore deprecated")
         return UnicoreAllocator(session)
     if name == "AWS":
-        return AwsAllocator(session)
+        return AwsAllocator(session, logger)
+    if name == "TEST":
+        return FakeAllocator(logger)
     raise ValueError(f"Invalid job allocator {name}")
 
 
-async def healthcheck(request: web.Request) -> web.Response:
-    return web.HTTPOk()
-
-
 async def main():
-    parser = argparse.ArgumentParser(description="VSM master application")
-    parser.add_argument(
-        "--port",
-        dest="port",
-        type=int,
-        default=settings.MASTER_PORT,
-        help="port to bind to",
+    logger = create_logger("VSM_MASTER")
+
+    connector = create_db_connector()
+
+    if RECREATE_DB:
+        async with await connector.connect() as connection:
+            await connection.recreate_table()
+
+    cafile = None
+    if os.path.exists(UNICORE_CA_FILE):
+        logger.info(f"Using CA file: {UNICORE_CA_FILE}")
+        cafile = UNICORE_CA_FILE
+
+    session = ClientSession(
+        connector=TCPConnector(
+            ssl=ssl.create_default_context(cafile=cafile),
+        ),
     )
-    parser.add_argument(
-        "--address",
-        dest="address",
-        type=str,
-        help="address to bind to",
-        default=settings.BASE_HOST,
-    )
-    parser.add_argument("--ssl", dest="ssl", action="store_true", help="force SSL")
 
-    args = parser.parse_args()
+    async with session:
+        authenticator = Authenticator(session, logger)
 
-    logger.configure()
+        allocator = create_allocator(JOB_ALLOCATOR, session, logger)
 
-    if args.ssl:
-        logging.info("Enabling SSL")
-        ssl_context = ssl.SSLContext(ssl.PROTOCOL_TLSv1_2)
-        ssl_context.check_hostname = False
-        ssl_context.load_cert_chain(settings.CERT_CRT, settings.CERT_KEY)
-    else:
-        ssl_context = None
-
-    ca_exists = os.path.exists(settings.UNICORE_CA_FILE)
-    if ca_exists:
-        logging.info(f"Using CA file: {settings.UNICORE_CA_FILE}")
-
-    async with await connect_to_db() as connection:
-        await connection.create_table_if_not_exists()
-
-    connector = TCPConnector(ssl=ssl.create_default_context(cafile=settings.UNICORE_CA_FILE if ca_exists else None))
-
-    async with ClientSession(connector=connector) as session:
-        authenticator = Authenticator(session)
-        allocator = create_allocator(settings.JOB_ALLOCATOR, session)
-        scheduler = JobScheduler(allocator, authenticator)
+        scheduler = JobScheduler(allocator, authenticator, connector, logger)
 
         cleanup_task = asyncio.create_task(scheduler.cleanup_expired_jobs())
 
-        app = web.Application(
-            logger=logging.root,
-            middlewares=[cors_middleware(allow_all=True)],
-        )
-
         routes = [
-            web.get("/healthz", healthcheck),
             web.post("/start", scheduler.start),
             web.post("/stop/{job_id:[^{}]+}", scheduler.stop),
             web.get("/status/{job_id:[^{}]+}", scheduler.get_status),
         ]
 
-        app.router.add_routes(routes)
-
-        runner = web.AppRunner(app, access_log=None)
-
-        await runner.setup()
-
-        site = web.TCPSite(runner, args.address, args.port, ssl_context=ssl_context)
-
-        logging.info(f"VSM master running at {args.address}:{args.port}")
-
-        await site.start()
-
         try:
-            await asyncio.Future()
+            await run_application("VSM", MASTER_PORT, logger, routes)
         finally:
             cleanup_task.cancel()
             with suppress(asyncio.CancelledError):
                 await cleanup_task
-            await runner.cleanup()
+            await allocator.close()
 
 
 def run_master() -> None:
     asyncio.run(main())
-
-
-if __name__ == "__main__":
-    run_master()
