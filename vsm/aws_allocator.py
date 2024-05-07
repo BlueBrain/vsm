@@ -64,14 +64,14 @@ class AwsAllocator(JobAllocator):
             host_ip = response["tasks"][0]["containers"][0]["networkInterfaces"][0]["privateIpv4Address"]
         except (KeyError, IndexError) as e:
             self._logger.warn(f"Cannot get host_ip from AWS response {e}")
-            return JobDetails(job_running=False)
+            return JobDetails()
 
         self._logger.info(f"Host IP: {host_ip}")
 
         if not await self._check_brayns_responds(host_ip):
-            return JobDetails(job_running=False)
+            return JobDetails()
 
-        return JobDetails(job_running=True, host=host_ip)
+        return JobDetails(host=host_ip)
 
     async def _run_aws_task(self, project: str) -> str:
         bucket_path = f"{AWS_BUCKET_NAME}:/{project}"

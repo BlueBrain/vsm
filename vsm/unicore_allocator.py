@@ -69,11 +69,11 @@ class UnicoreAllocator(JobAllocator):
             content = await self._get_stdout(token, job_id)
         except Exception:
             logging.debug("Host not ready ?")
-            return JobDetails(job_running=True, end_time=end_time)
+            return JobDetails(end_time)
 
         host = _get_hostname(content.decode())
 
-        return JobDetails(job_running=True, end_time=end_time, host=host)
+        return JobDetails(end_time, host)
 
     async def _get_stdout(self, token: str, job_id: str) -> bytes:
         storage = f"{UNICORE_ENDPOINT}/storages/{job_id}-uspace"
