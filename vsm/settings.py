@@ -22,6 +22,7 @@ RECREATE_DB = bool(int(os.getenv("VSM_RECREATE_DB", "0")))
 JOB_ALLOCATOR = os.getenv("VSM_JOB_ALLOCATOR", "UNICORE")
 JOB_DURATION_SECONDS = int(os.getenv("VSM_JOB_DURATION_SECONDS", "28800"))
 JOB_CLEANUP_PERIOD_SECONDS = int(os.getenv("VSM_JOB_CLEANUP_PERIOD_SECONDS", "10"))
+PROXY_URL = os.getenv("VSM_PROXY_URL", "localhost:8888")
 
 # UNICORE
 UNICORE_ENDPOINT = os.getenv("VSM_UNICORE_ENDPOINT", "https://unicore.bbp.epfl.ch:8080/BB5-CSCS/rest/core")

@@ -8,7 +8,7 @@ from aiohttp import web
 from .allocator import JobAllocator, JobDetails
 from .authenticator import Authenticator
 from .db import DbConnector, Job
-from .settings import JOB_CLEANUP_PERIOD_SECONDS, JOB_DURATION_SECONDS
+from .settings import JOB_CLEANUP_PERIOD_SECONDS, JOB_DURATION_SECONDS, PROXY_URL
 
 CLEANUP_PERIOD = timedelta(seconds=JOB_CLEANUP_PERIOD_SECONDS)
 JOB_DURATION = timedelta(seconds=JOB_DURATION_SECONDS)
@@ -28,7 +28,7 @@ class JobScheduler:
         self._logger = logger
 
     async def start(self, request: web.Request) -> web.Response:
-        self._logger.info("Start request received.")
+        self._logger.info("Start request received")
 
         token = self._authenticator.get_token(request)
         user_id = await self._authenticator.get_username(token)
@@ -70,7 +70,7 @@ class JobScheduler:
         return web.HTTPCreated(text=json.dumps({"job_id": job_id}))
 
     async def stop(self, request: web.Request) -> web.Response:
-        self._logger.info("Stop request received.")
+        self._logger.info("Stop request received")
 
         token = self._authenticator.get_token(request)
         user_id = await self._authenticator.get_username(token)
@@ -88,7 +88,7 @@ class JobScheduler:
         return web.HTTPOk()
 
     async def get_status(self, request: web.Request) -> web.Response:
-        self._logger.info("Status request received.")
+        self._logger.info("Status request received")
 
         token = self._authenticator.get_token(request)
         user_id = await self._authenticator.get_username(token)
@@ -110,7 +110,7 @@ class JobScheduler:
         self._logger.info(f"Job details: {details}")
 
         if details.host is None:
-            return _reply(details)
+            return _serialize_response(job_id, details)
 
         try:
             async with await self._connector.connect() as connection:
@@ -121,7 +121,7 @@ class JobScheduler:
 
         self._logger.info("Updated job host in DB")
 
-        return _reply(details)
+        return _serialize_response(job_id, details)
 
     async def cleanup_expired_jobs(self) -> None:
         while True:
@@ -194,11 +194,15 @@ class JobScheduler:
         return job_id
 
 
-def _reply(details: JobDetails) -> web.Response:
+def _serialize_response(job_id: str, details: JobDetails) -> web.Response:
     assert details.end_time is not None
+
     message = {
-        "job_running": details.job_running,
+        "ready": details.ready,
         "end_time": details.end_time.isoformat(),
-        "brayns_started": details.host is not None,
     }
+
+    if details.ready:
+        message["job_url"] = f"{PROXY_URL}/{job_id}/renderer"
+
     return web.HTTPOk(text=json.dumps(message))

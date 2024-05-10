@@ -8,9 +8,12 @@ from .logger import Logger
 
 @dataclass
 class JobDetails:
-    job_running: bool = False
     end_time: datetime | None = None
     host: str | None = None
+
+    @property
+    def ready(self) -> bool:
+        return self.host is not None
 
 
 class JobAllocator(Protocol):
@@ -39,7 +42,4 @@ class FakeAllocator(JobAllocator):
 
     async def get_job_details(self, token: str, job_id: str) -> JobDetails:
         self._logger.info(f"Get job details {token=} {job_id=}")
-        return JobDetails(
-            job_running=True,
-            host="localhost",
-        )
+        return JobDetails(host="localhost")
