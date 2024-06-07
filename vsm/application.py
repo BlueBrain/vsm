@@ -63,7 +63,7 @@ def parse_argv(description: str, default_port: int) -> Settings:
     )
     parser.add_argument(
         "--address",
-        dest="address",
+        dest="host",
         type=str,
         default=BASE_HOST,
         help="address to bind to",
