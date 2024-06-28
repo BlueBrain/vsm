@@ -28,7 +28,7 @@ echo
 echo Loading brayns/3.5.1 from unstable...
 
 module purge
-module load unstable
+module load archive/2024-01
 module load brayns/3.5.1
 
 braynsService \

@@ -36,7 +36,11 @@ class Authenticator:
         self._logger.info("Sending Keycloack request")
         self._logger.debug(f"Keycloak request details: {url=} {headers=}")
 
-        response = await self._session.get(url, headers=headers)
+        try:
+            response = await self._session.get(url, headers=headers)
+        except Exception as e:
+            self._logger.error(f"Adrien's logger saying that KK errors with: {e}")
+            raise web.HTTPInternalServerError("KK cert issue")
 
         status = response.status
 
