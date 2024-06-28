@@ -44,7 +44,7 @@ async def main():
 
     session = ClientSession(
         connector=TCPConnector(
-            ssl=ssl.create_default_context(cafile=cafile),
+            verify_ssl=False,
         ),
     )
 
