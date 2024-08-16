@@ -23,7 +23,7 @@ DBD_TABLE_NAME = os.getenv("VSM_DB_TABLE_NAME", "viz-vsm-jobs-table")
 DB_TYPE = "postgresql" if (os.getenv("VSM_DB_ENGINE") == "postgresql") else "dynamodb"
 
 # Job allocation (UNICORE or AWS)
-JOB_ALLOCATOR = os.getenv("VSM_JOB_ALLOCATOR", "UNICORE")
+JOB_ALLOCATOR = os.getenv("VSM_JOB_ALLOCATOR", "AWS")
 JOB_DURATION_SECONDS = int(os.getenv("VSM_JOB_DURATION_SECONDS", "28800"))
 JOB_CLEANUP_PERIOD_SECONDS = int(os.getenv("VSM_JOB_CLEANUP_PERIOD_SECONDS", "10"))
 PROXY_URL = os.getenv("VSM_PROXY_URL", "localhost:8888")
