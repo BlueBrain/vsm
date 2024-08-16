@@ -2,13 +2,6 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Protocol
 
-import asyncpg
-from vsm import settings
-from .db_dynanamo import DynamodbClient
-from .db_pgsql import PsqlConnector
-
-from .settings import DB_HOST, DB_NAME, DB_PASSWORD, DB_USERNAME, DB_TABLE_NAME
-
 
 JOB_ID = "job_id"
 USER_ID = "user_id"
@@ -36,8 +29,6 @@ def parse_job(row: dict[str, str]) -> Job:
     )
 
 
-
-
 class DbConnection(Protocol):
     async def __aenter__(self):
         return self
@@ -63,11 +54,3 @@ class DbConnection(Protocol):
 class DbConnector(Protocol):
     async def connect(self) -> DbConnection: ...
 
-
-def create_db_connector() -> DbConnector:
-    return PsqlConnector(
-        host=DB_HOST,
-        database=DB_NAME,
-        user=DB_USERNAME,
-        password=DB_PASSWORD,
-    ) if settings.DB_TYPE == "postgresql" else DynamodbClient(table_name=DB_TABLE_NAME)
