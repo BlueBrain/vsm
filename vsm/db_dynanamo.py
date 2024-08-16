@@ -36,8 +36,8 @@ class DynamoConnection(DbConnection):
             Item={
                 'job_id': {'S': job.id},
                 'user_id': {'S': job.user},
-                'start_time': {'S': job.start_time},
-                'end_time': {'S': job.end_time},
+                'start_time': {'S': str(job.start_time)},
+                'end_time': {'S': str(job.end_time)},
                 'hostname': {'S': job.host},
             },
         )
@@ -46,7 +46,7 @@ class DynamoConnection(DbConnection):
         self.client.update_item(
             TableName=DBD_TABLE_NAME,
             Key={'job_id': {'S': id}},
-            UpdateExpression="SEThostname = :hostname",
+            UpdateExpression="SET hostname = :hostname",
             ExpressionAttributeValues={
                 ':hostname': {'S': host},
             }
