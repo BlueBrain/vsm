@@ -3,7 +3,7 @@ import asyncio
 from aiohttp import ClientSession, web
 
 from .application import run_application
-from .db import create_db_connector
+from .db_init import create_db_connector
 from .logger import create_logger
 from .settings import SLAVE_PORT
 from .websocket_proxy import WebSocketProxy

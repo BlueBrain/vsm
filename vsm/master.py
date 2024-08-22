@@ -10,7 +10,7 @@ from .allocator import FakeAllocator, JobAllocator
 from .application import run_application
 from .authenticator import Authenticator
 from .aws_allocator import AwsAllocator
-from .db import create_db_connector
+from .db_init import create_db_connector
 from .logger import create_logger
 from .scheduler import JobScheduler
 from .settings import JOB_ALLOCATOR, MASTER_PORT, RECREATE_DB, UNICORE_CA_FILE
