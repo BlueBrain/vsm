@@ -10,8 +10,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = { file = "LICENSE.md" }
 authors = [
-    { "name" = "Pawel Podhajski", "email" = "pawel.podhajski@epfl.ch" },
-    { "name" = "Adrien Fleury", "email" = "adrien.fleury@epfl.ch" },
+    { "name" = "Blue Brain Project, EPFL"}
 ]
 dependencies = ["aiohttp", "aiohttp-middlewares", "asyncpg", "boto3"]
 
