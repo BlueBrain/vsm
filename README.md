@@ -1,6 +1,6 @@
 # Visualisation SBO Middleware
 
-This project enables running HPC/Vis workflows on AWS or on on-prem infrastructure for public internet users.
+This project enables running HPC/Visualisation workflows on AWS or on on-prem infrastructure for public internet users.
 It is made of two main components:
 ### VSM master
 Handles job submission, user authentication and authorization.
@@ -11,9 +11,8 @@ Used to proxy Brayns (https://github.com/BlueBrain/Brayns) WebSocket communicati
 
 ## Running
 Use entrypoints defined in pyproject.toml
-vsm_master = "vsm:run_master"
-vsm_slave = "vsm:run_slave"
- 
+```vsm_master = "vsm:run_master"```
+```vsm_slave = "vsm:run_slave"```
 
 
 
